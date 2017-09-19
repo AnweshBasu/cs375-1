@@ -24,6 +24,7 @@
 #include <stdio.h>
 #include <ctype.h>
 #include <string.h>
+#include <limits.h>
 #include "token.h"
 #include "lexan.h"
 
@@ -64,7 +65,7 @@ void skipblanks ()
 			getchar();
 			getchar();  //Skip over '(' and '*'
 			while ((c = peekchar()) !=  EOF && (d = peek2char()) != EOF && !(c == '*' && d== ')'))
-				getchar();
+			getchar();
 			getchar();
 			getchar();  //Skip over '*' and ')'
 		} else {
@@ -97,12 +98,25 @@ TOKEN getOperatorTok(int val, TOKEN tok) {
 	return tok;
 }
 
-TOKEN getStringTok(char word[], TOKEN tok){
+TOKEN getStringTok(char word[], TOKEN tok) {
 	tok->tokentype = STRINGTOK;
 	strcpy(tok->stringval, word);
 	return tok;
 } 
 
+TOKEN getIntegerTok(int val, TOKEN tok) {
+	tok->tokentype = NUMBERTOK;
+	tok->datatype = INTEGER;
+	tok->intval = val;
+	return tok;
+}
+
+TOKEN getRealTok(double val, TOKEN tok) {
+	tok->tokentype = NUMBERTOK;
+	tok->datatype = REAL;
+	tok->realval = val;
+	return tok;
+}
 /* Get identifiers and reserved words */
 TOKEN identifier (TOKEN tok)
 {
@@ -144,16 +158,17 @@ TOKEN identifier (TOKEN tok)
 TOKEN getstring (TOKEN tok)
 {
 	getchar();
-	int c, size = 0;
+	int c, d, size = 0;
 	char word[256];
-	while ((c = peekchar()) != EOF) {
+	while ((c = peekchar()) != EOF && !(c == '\n' || c=='\t') ) {
 		c = getchar();
 		if( c == '\'') {
-			if(peek2char() != '\''){
+			if((d = peekchar()) != EOF && d != '\''){
 				break;
+			} else {
+				getchar();
 			}
 		}
-		
 		word[size] = c;
 		size ++;
 	}
@@ -162,7 +177,6 @@ TOKEN getstring (TOKEN tok)
 		word[15] = '\0';
 	else
 		word[size] = '\0';
-	
 	return getStringTok(word, tok);	
 
 }
@@ -203,18 +217,72 @@ TOKEN special (TOKEN tok)
 
 /* Get and convert unsigned numbers of all types. */
 TOKEN number (TOKEN tok)
-{ long num;
-	int  c, charval;
-	num = 0;
-	while ( (c = peekchar()) != EOF
-			&& CHARCLASS[c] == NUMERIC)
-	{   c = getchar();
-		charval = (c - '0');
-		num = num * 10 + charval;
-	}
-	tok->tokentype = NUMBERTOK;
-	tok->datatype = INTEGER;
-	tok->intval = num;
-	return (tok);
-}
+{ 	
+	long num = 0, exponent = 0;
+	double real = 0.0, decimal = 0.0, multiplier = 10.0;
+	int  c, charval, eFlag = 0, intError = 0, floatError = 0;
 
+	while ((c = peekchar()) != EOF
+			&& (CHARCLASS[c] == NUMERIC))
+	{   
+		c = getchar();
+		charval = c - '0';
+
+		if ( num > INT_MAX ) {
+			exponent ++;
+			intError = 1;
+		} else {
+			num = num * 10 + charval;
+		}
+		
+	}
+	
+	//The part after the decimal point
+	if(c == '.') {
+		intError = 0;
+		getchar();
+		while ((c = peekchar()) != EOF
+				&& (CHARCLASS[c] == NUMERIC)) {
+			c = getchar();
+			charval = c - '0';
+			decimal = decimal + ((double) charval / multiplier);
+			multiplier *= 10;
+		}	
+		
+		real = (double) num + decimal;
+		
+		if (floatError) {
+			printf("Float number out of range \n");
+			return getRealTok(0.0, tok);
+		} else {
+			return getRealTok(real, tok);
+		}
+	}
+	
+	//The exponent part
+	if(c == 'e') {
+		getchar();
+		c = peekchar();
+		if (c == '-') {
+			eFlag = 1;
+			getchar();
+		} else if (c == '+') {
+			getchar();
+		}
+		
+		while ((c = peekchar()) != EOF 
+				&& CHARCLASS[c] == NUMERIC) {	
+		}
+
+	}
+
+
+	if (intError) {
+		printf("Integer number out of range \n");
+		return getIntegerTok(0, tok);
+	} else {
+		return getIntegerTok(num, tok);
+	}
+		
+	
+}
