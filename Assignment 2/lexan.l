@@ -51,17 +51,58 @@ TOKEN yylval;     /* This is the type of the lexical analyzer result */
 
 /* regular definitions */
 
-delim    [ \t\n]
-ws       {delim}+
-letter   [A-Za-z]
-digit    [0-9]
-id       {letter}({letter}|{digit})*
-fnumber  {digit}+(\.{digit}+)?(E[+\-]?{digit}+)?
-
+delim     [ \t\n]
+ws        {delim}+
+letter    [A-Za-z]
+digit     [0-9]
+id        {letter}({letter}|{digit})*
+intnumber {digit}+
+fnumber   {digit}+(\.{digit}+)?([eE][+\-]?{digit}+)?
+string    \'(^(\'(^\')))+ 
 
 %%
 
 {ws}      { /* no action and no return */ }
+
+"{"       { while (input() != '}'); }
+
+"(*"      { jum:
+            while (input() != '*');
+            int c = input();
+            if (c != ')'){
+              unput(c);
+              goto jum;
+            }
+          }
+
+"+"       {return(maketoken(OPERATOR, PLUS));}
+"-"       {return(maketoken(OPERATOR, MINUS));}
+"*"       {return(maketoken(OPERATOR, TIMES));}
+"/"       {return(maketoken(OPERATOR, DIVIDE));}
+":="      {return(maketoken(OPERATOR, ASSIGN));}
+"="       {return(maketoken(OPERATOR, EQ));}
+"<>"      {return(maketoken(OPERATOR, NE));}
+"<"       {return(maketoken(OPERATOR, LT));}
+"<="      {return(maketoken(OPERATOR, LE));}
+">="      {return(maketoken(OPERATOR, GE));}
+">"       {return(maketoken(OPERATOR, GT));}
+"^"       {return(maketoken(OPERATOR, POINT));}
+"."       {return(maketoken(OPERATOR, DOT));}
+and       {return(maketoken(OPERATOR, AND));}
+or        {return(maketoken(OPERATOR, OR));}
+not       {return(maketoken(OPERATOR, NOT));}
+div       {return(maketoken(OPERATOR, DIV));}
+mod       {return(maketoken(OPERATOR, MOD));}
+in        {return(maketoken(OPERATOR, IN));}
+
+","       {return(maketoken(DELIMITER, COMMA));}
+";"       {return(maketoken(DELIMITER, SEMICOLON));}
+":"       {return(maketoken(DELIMITER, COLON));}
+"("       {return(maketoken(DELIMITER, LPAREN));}
+")"       {return(maketoken(DELIMITER, RPAREN));}
+"["       {return(maketoken(DELIMITER, LBRACKET));}
+"]"       {return(maketoken(DELIMITER, RBRACKET));}
+".."      {return(maketoken(DELIMITER, DOTDOT));}  
 
 array        {return(maketoken(RESERVED, ARRAY));}
 begin        {return(maketoken(RESERVED, BEGINBEGIN));}
@@ -94,36 +135,13 @@ while        {return(maketoken(RESERVED, WHILE));}
 with         {return(maketoken(RESERVED, WITH));}
 
 {id}      {return(install_id());}
-{fnumber} {return(install_fnum());}
 
-"+"       {return(maketoken(OPERATOR, PLUS));}
-"-"       {return(maketoken(OPERATOR, MINUS));}
-"*"       {return(maketoken(OPERATOR, TIMES));}
-"/"       {return(maketoken(OPERATOR, DIVIDE));}
-":="      {return(maketoken(OPERATOR, ASSIGN));}
-"="       {return(maketoken(OPERATOR, EQ));}
-"<>"      {return(maketoken(OPERATOR, NE));}
-"<"       {return(maketoken(OPERATOR, LT));}
-"<="      {return(maketoken(OPERATOR, LE));}
-">="      {return(maketoken(OPERATOR, GE));}
-">"       {return(maketoken(OPERATOR, GT));}
-"^"       {return(maketoken(OPERATOR, POINT));}
-"."       {return(maketoken(OPERATOR, DOT));}
-and       {return(maketoken(OPERATOR, AND));}
-or        {return(maketoken(OPERATOR, OR));}
-not       {return(maketoken(OPERATOR, NOT));}
-div       {return(maketoken(OPERATOR, DIV));}
-mod       {return(maketoken(OPERATOR, MOD));}
-in        {return(maketoken(OPERATOR, IN));}
+{string}     {return(install_string());}
 
-","       {return(maketoken(DELIMITER, COMMA));}
-";"       {return(maketoken(DELIMITER, SEMICOLON));}
-":"       {return(maketoken(DELIMITER, COLON));}
-"("       {return(maketoken(DELIMITER, LPAREN));}
-")"       {return(maketoken(DELIMITER, RPAREN));}
-"{"       {return(maketoken(DELIMITER, LBRACKET));}
-"}"       {return(maketoken(DELIMITER, RBRACKET));}
-".."       {return(maketoken(DELIMITER, DOTDOT));}
+{intnumber}  {return(install_int());}
+{fnumber}    {return(install_fnum());}
+
+
 
 
 %%
@@ -162,6 +180,33 @@ int install_id()
   yylval->stringval[n] = '\0';
           /* printf("id  %10s   n = %4d\n", yytext, n); */
   return(IDENTIFIER);
+ }
+
+ int install_string()
+ { int i, c, n;
+  yylval = (TOKEN) talloc();  /* Make new token, set yylval to point to it */
+  yylval->tokentype = STRINGTOK;
+  n = yyleng;            /* number of characters */
+  if ( n > 15 ) n = 15;
+  for (i = 0; i < n ; i++)
+   { c = yytext[i];
+          /* if (islower(c)) c = toupper(c); */ /* to raise to upper case */
+     yylval->stringval[i] = c;
+    };
+  yylval->stringval[n] = '\0';
+          /* printf("id  %10s   n = %4d\n", yytext, n); */
+  return(STRING);
+ }
+
+ int install_int() {  
+  int num;
+  yylval = (TOKEN) talloc();   /* Make new token, set yylval to point to it */
+  yylval->tokentype = NUMBERTOK;
+  yylval->datatype = INTEGER;
+       /* printf("num %10s   n = %4d\n",yytext,yyleng); */
+  sscanf(yytext, "%d", &num);
+  yylval->intval = num;
+  return(NUMBER);
  }
 
 int install_fnum() {  /* Note -- you may use sscanf for this assignment. */
