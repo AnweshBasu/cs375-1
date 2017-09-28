@@ -1,5 +1,11 @@
 %{    /* lex2.l -- partial lex specification for Pascal    22 Jul 13 */
 
+/*
+Student name: S. Ram Janarthana Raja
+UT EID: rs53992
+*/
+
+
 /* Copyright (c) 2013 Gordon S. Novak Jr. and The University of Texas at Austin
    */
 
@@ -58,7 +64,7 @@ digit     [0-9]
 id        {letter}({letter}|{digit})*
 intnumber {digit}+
 fnumber   {digit}+(\.{digit}+)?([eE][+\-]?{digit}+)?
-string    \'(^(\'(^\')))+ 
+string    '(.*?)'
 
 %%
 
@@ -183,18 +189,25 @@ int install_id()
  }
 
  int install_string()
- { int i, c, n;
+ { int i, c, n, s = 0;
   yylval = (TOKEN) talloc();  /* Make new token, set yylval to point to it */
   yylval->tokentype = STRINGTOK;
   n = yyleng;            /* number of characters */
-  if ( n > 15 ) n = 15;
+  char mystring[n];
   for (i = 0; i < n ; i++)
-   { c = yytext[i];
-          /* if (islower(c)) c = toupper(c); */ /* to raise to upper case */
-     yylval->stringval[i] = c;
-    };
-  yylval->stringval[n] = '\0';
-          /* printf("id  %10s   n = %4d\n", yytext, n); */
+   { 
+     c = yytext[i];       /* to ignore the first quote mark */
+     if (i == 0 || i == (n - 1)) {
+      } else {
+        mystring[s] = c;
+        s++;
+        if (c == '\'') i++;
+     } 
+  }
+
+  if (s > 15) s = 15;
+  mystring[s] = '\0';
+  strcpy(yylval->stringval, mystring);
   return(STRING);
  }
 
