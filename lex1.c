@@ -1,5 +1,11 @@
 /* lex1.c         14 Feb 01; 31 May 12       */
 
+/*
+Name: S. Ram Janarthana Raja	
+UT EID: rs53992
+*/
+
+
 /* This file contains code stubs for the lexical analyzer.
    Rename this file to be lexanc.c and fill in the stubs.    */
 
@@ -25,6 +31,8 @@
 #include <ctype.h>
 #include <string.h>
 #include <limits.h>
+#include <math.h>
+#include <float.h>
 #include "token.h"
 #include "lexan.h"
 
@@ -65,7 +73,7 @@ void skipblanks ()
 			getchar();
 			getchar();  //Skip over '(' and '*'
 			while ((c = peekchar()) !=  EOF && (d = peek2char()) != EOF && !(c == '*' && d== ')'))
-			getchar();
+				getchar();
 			getchar();
 			getchar();  //Skip over '*' and ')'
 		} else {
@@ -187,7 +195,7 @@ TOKEN special (TOKEN tok)
 	int c, size = 0, flag = 0, val = 0, i;
 	char oper[3];
 
-	while ( (c = peekchar()) != EOF 
+	while ( (c = peekchar()) != EOF -2147483648
 			&& CHARCLASS[c] == SPECIAL)
 	{       c = getchar();	
 		oper[size] = c;
@@ -213,14 +221,26 @@ TOKEN special (TOKEN tok)
 	return getDelimiterTok(i + 1, tok);
 }
 
+TOKEN handleRealError(TOKEN tok){
+	printf("Real number out of range \n");
+	return getRealTok(0.0, tok);
+}
+
+TOKEN returnRealTok(double real, TOKEN tok){
+	if (real > FLT_MAX || real < FLT_MIN) {
+		return handleRealError(tok);
+	} else {
+		return getRealTok(real, tok);
+	}
+}
 
 
 /* Get and convert unsigned numbers of all types. */
 TOKEN number (TOKEN tok)
 { 	
-	long num = 0, exponent = 0;
+	long num = 0, exponent = 0, expValue = 0;
 	double real = 0.0, decimal = 0.0, multiplier = 10.0;
-	int  c, charval, eFlag = 0, intError = 0, floatError = 0;
+	int  c, d, charval, dFlag = 0, negFlag = 0, eFlag = 0, intError = 0, floatError = 0;
 
 	while ((c = peekchar()) != EOF
 			&& (CHARCLASS[c] == NUMERIC))
@@ -234,12 +254,18 @@ TOKEN number (TOKEN tok)
 		} else {
 			num = num * 10 + charval;
 		}
-		
-	}
 	
+	}
+
+	if ( num > INT_MAX ) {
+		exponent ++;
+		intError = 1;
+	} 
+
 	//The part after the decimal point
-	if(c == '.') {
+	if(c == '.' && (d = peek2char()) != EOF && CHARCLASS[d] == NUMERIC) {
 		intError = 0;
+		dFlag = 1;
 		getchar();
 		while ((c = peekchar()) != EOF
 				&& (CHARCLASS[c] == NUMERIC)) {
@@ -248,32 +274,66 @@ TOKEN number (TOKEN tok)
 			decimal = decimal + ((double) charval / multiplier);
 			multiplier *= 10;
 		}	
-		
+
 		real = (double) num + decimal;
-		
-		if (floatError) {
-			printf("Float number out of range \n");
-			return getRealTok(0.0, tok);
-		} else {
-			return getRealTok(real, tok);
-		}
+
 	}
-	
+
 	//The exponent part
 	if(c == 'e') {
+		eFlag = 1;
 		getchar();
 		c = peekchar();
 		if (c == '-') {
-			eFlag = 1;
+			negFlag = 1;
 			getchar();
 		} else if (c == '+') {
 			getchar();
 		}
-		
+
 		while ((c = peekchar()) != EOF 
 				&& CHARCLASS[c] == NUMERIC) {	
+			c = getchar();
+			charval = c - '0';
+
+			if ( expValue > INT_MAX ){
+				continue ;
+			}
+			expValue = expValue * 10 + charval;
 		}
 
+	}
+
+	if (dFlag) {
+		if (eFlag) {
+			if (negFlag) {
+				exponent = exponent - expValue;
+				real = real / pow (10, exponent);
+			} else {
+				exponent = exponent + expValue;
+				real = real * pow (10, exponent);
+			}
+
+			return returnRealTok(real, tok);
+
+		} else {
+
+			return returnRealTok(real, tok);
+
+		}
+
+	}
+	
+	if (eFlag)  {
+		real = (double) num;
+		if (negFlag) {
+			exponent = exponent - expValue;
+			real = real / pow(10, exponent);
+		} else {
+			exponent = exponent + expValue;
+			real = real * pow(10, exponent);
+		}
+		return returnRealTok(real, tok);		
 	}
 
 
@@ -283,6 +343,4 @@ TOKEN number (TOKEN tok)
 	} else {
 		return getIntegerTok(num, tok);
 	}
-		
-	
 }

@@ -77,10 +77,26 @@ TOKEN parseresult;
 
 %%
 
-program    :  statement DOT  /* change this! */       { parseresult = $1; }
+program    : PROGRAM IDENTIFIER LPAREN idlist RPAREN SEMICOLON vblock DOT { parseresult = makeprogram($2, $4, $7); } ;
              ;
-  statement  :  BEGINBEGIN statement endpart
-                                       { $$ = makeprogn($1,cons($2, $3)); }
+  idlist     :  IDENTIFIER COMMA idlist { $$ = cons($1, $3); }
+             |  IDENTIFIER    { $$ = cons($1, NULL); }
+             ;
+  vblock     :  VAR varspecs block       { $$ = $3; }
+             |  block
+             ;
+  varspecs   :  vargroup SEMICOLON varspecs
+             |  vargroup SEMICOLON
+             ;
+  vargroup   :  idlist COLON type { instvars($1, $3); }
+             ;
+  type       :  simpletype
+             ;
+  simpletype :  IDENTIFIER   { $$ = findtype($1); }
+             ;
+  block      :  BEGINBEGIN statement endpart   { $$ = makeprogn($1,cons($2, $3)); }  
+             ;
+  statement  :  BEGINBEGIN statement endpart   { $$ = makeprogn($1,cons($2, $3)); }
              |  IF expr THEN statement endif   { $$ = makeif($1, $2, $4, $5); }
              |  assignment
              ;
@@ -112,12 +128,13 @@ program    :  statement DOT  /* change this! */       { parseresult = $1; }
    are working.
   */
 
-#define DEBUG        31             /* set bits here for debugging, 0 = off  */
-#define DB_CONS       1             /* bit to trace cons */
-#define DB_BINOP      2             /* bit to trace binop */
-#define DB_MAKEIF     4             /* bit to trace makeif */
-#define DB_MAKEPROGN  8             /* bit to trace makeprogn */
-#define DB_PARSERES  16             /* bit to trace parseresult */
+#define DEBUG           31             /* set bits here for debugging, 0 = off  */
+#define DB_CONS         1             /* bit to trace cons */
+#define DB_BINOP        2             /* bit to trace binop */
+#define DB_MAKEIF       4             /* bit to trace makeif */
+#define DB_MAKEPROGN    8             /* bit to trace makeprogn */
+#define DB_PARSERES     16             /* bit to trace parseresult */
+#define DB_MAKEPROGRAM  3
 
  int labelnumber = 0;  /* sequential counter for internal label numbers */
 
@@ -175,6 +192,72 @@ TOKEN makeprogn(TOKEN tok, TOKEN statements)
        };
      return tok;
    }
+
+/* makeprogram makes the tree structures for the top-level program */
+TOKEN makeprogram(TOKEN name, TOKEN args, TOKEN statements) {
+    TOKEN program = talloc();
+    TOKEN nameToArgs = talloc();
+    program->tokentype = OPERATOR;
+    program->whichval = PROGRAMOP;
+    program->operands = name;
+    // args->tokentype = IDENTIFIER;
+    // name->tokentype = IDENTIFIER;
+    nameToArgs = makeprogn(nameToArgs, args);
+    name->link = nameToArgs;
+    nameToArgs->link = statements;
+    if (DEBUG & DB_MAKEPROGRAM)
+    { printf("makeprogram\n");
+      dbugprinttok(program);
+      dbugprinttok(name);
+      dbugprinttok(nameToArgs);
+      dbugprinttok(args);
+    };
+    return program;
+  }
+
+/* findid finds an identifier in the symbol table, sets up symbol table
+   pointers, changes a constant to its number equivalent */
+
+TOKEN findid(TOKEN tok) { /* the ID token */
+    SYMBOL sym, typ;
+    sym = searchst(tok->stringval);
+    tok->symentry = sym;
+    typ = sym->datatype;
+    tok->symtype = typ;
+    if ( typ->kind == BASICTYPE ||
+         typ->kind == POINTERSYM)
+        tok->datatype = typ->basicdt;
+    return tok;
+  }
+
+/* findtype looks up a type name in the symbol table, puts the pointer
+   to its type into tok->symtype, returns tok. */
+
+TOKEN findtype(TOKEN tok) {
+    SYMBOL sym = searchst(tok->stringval);
+    tok->symtype = sym;
+    return tok;
+  }
+
+/* install variables in symbol table */
+void instvars(TOKEN idlist, TOKEN typetok)
+  {  SYMBOL sym, typesym; int align;
+     typesym = typetok->symtype;
+     align = alignsize(typesym);
+     while ( idlist != NULL )   /* for each id */
+       {  sym = insertsym(idlist->stringval);
+          sym->kind = VARSYM;
+          sym->offset =
+              wordaddress(blockoffs[blocknumber],
+                          align);
+          sym->size = typesym->size;
+          blockoffs[blocknumber] =
+                         sym->offset + sym->size;
+          sym->datatype = typesym;
+          sym->basicdt = typesym->basicdt;
+          idlist = idlist->link;
+        };
+  }
 
 int wordaddress(int n, int wordsize)
   { return ((n + wordsize - 1) / wordsize) * wordsize; }

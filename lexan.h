@@ -1,8 +1,8 @@
-/* lexan.h            Gordon S. Novak Jr.           09 Feb 01 */
+/* lexan.h            Gordon S. Novak Jr.           11 Oct 17 */
 
 /* Definitions for lexical analyzer */
 
-/* Copyright (c) 2001 Gordon S. Novak Jr. and
+/* Copyright (c) 2017 Gordon S. Novak Jr. and
    The University of Texas at Austin. */
 
 /* This program is free software; you can redistribute it and/or modify
@@ -42,3 +42,6 @@ TOKEN identifier (TOKEN tok);
 TOKEN getstring (TOKEN tok);
 TOKEN special (TOKEN tok);
 TOKEN number (TOKEN tok);
+
+int yylex();
+void yyerror (char const *s);
