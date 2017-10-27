@@ -83,7 +83,7 @@ TOKEN parseresult;
 
 %%
 
-program    : PROGRAM IDENTIFIER LPAREN idlist RPAREN SEMICOLON vblock DOT { parseresult = makeprogram($2, $4, $7); } ;
+program    : PROGRAM IDENTIFIER LPAREN idlist RPAREN SEMICOLON cblock DOT { parseresult = makeprogram($2, $4, $7); } ;
              ;
   u_constant :  IDENTIFIER 
              |  NUMBER
@@ -93,17 +93,19 @@ program    : PROGRAM IDENTIFIER LPAREN idlist RPAREN SEMICOLON vblock DOT { pars
   sign       :  PLUS 
              |  MINUS
              ;
-  constant   :  sign IDENTIFIER
+  constant   :  sign IDENTIFIER     { $$ = unaryop($1, $2); }
              |  IDENTIFIER
-             |  sign NUMBER
+             |  sign NUMBER         { $$ = unaryop($1, $2); }
              |  NUMBER
              |  STRING
              ;
   idlist     :  IDENTIFIER COMMA idlist { $$ = cons($1, $3); }
              |  IDENTIFIER    { $$ = cons($1, NULL); }
              ;
-  clist      :  IDENTIFIER EQ constant clist    { $$ = instconst($1, $3); }
-             |  IDENTIFIER EQ constant          { $$ = instconst($1, $3); }
+  cdef       :  IDENTIFIER EQ constant { instconst($1, $3); }
+             ;
+  clist      :  cdef SEMICOLON clist    
+             |  cdef SEMICOLON          
              ;  
   tlist      :  IDENTIFIER EQ TYPE tlist
              |  IDENTIFIER EQ TYPE
@@ -111,7 +113,7 @@ program    : PROGRAM IDENTIFIER LPAREN idlist RPAREN SEMICOLON vblock DOT { pars
   s_list     :  statement SEMICOLON s_list      { $$ = cons($1, $3); }
              |  statement
              ;
-  cblock     :  CONST clist tblock              { $$ = $3}
+  cblock     :  CONST clist tblock              { $$ = $3; }
              |  tblock
              ;
   tblock     :  TYPE tlist vblock       { $$ = $3; }
@@ -120,8 +122,8 @@ program    : PROGRAM IDENTIFIER LPAREN idlist RPAREN SEMICOLON vblock DOT { pars
   vblock     :  VAR varspecs block       { $$ = $3; }
              |  block
              ;
-  varspecs   :  vargroup SEMICOLON varspecs
-             |  vargroup SEMICOLON
+  varspecs   :  vargroup SEMICOLON varspecs   
+             |  vargroup SEMICOLON            
              ;
   vargroup   :  idlist COLON type { instvars($1, $3); }
              ;
@@ -136,7 +138,7 @@ program    : PROGRAM IDENTIFIER LPAREN idlist RPAREN SEMICOLON vblock DOT { pars
              |  assignment
              |  funcall
              |  FOR assignment TO expr DO statement   { $$ = makefor(1, $1, $2, $3, $4, $5, $6); }
-             |  REPEAT s_list UNTIL expr
+             |  REPEAT s_list UNTIL expr    
              ;
   funcall    :  IDENTIFIER LPAREN expr_list RPAREN    { $$ = makefuncall($2, $1, $3); }
              ;
@@ -151,13 +153,10 @@ program    : PROGRAM IDENTIFIER LPAREN idlist RPAREN SEMICOLON vblock DOT { pars
              ;
   assignment :  variable ASSIGN expr         { $$ = binop($2, $1, $3); }
              ;
-  variable   :  IDENTIFIER                   { $$ = findid($1); }
-             |  variable LBRACKET expr_list RBRACKET
-             |  variable DOT IDENTIFIER
-             |  variable POINT
+  variable   :  IDENTIFIER                            { $$ = findid($1); }
              ;
   plus_op    :  PLUS 
-             |  MINUS 
+             |  MINUS  
              |  OR
              ;
   compare_op :  EQ 
@@ -185,7 +184,10 @@ program    : PROGRAM IDENTIFIER LPAREN idlist RPAREN SEMICOLON vblock DOT { pars
              |  factor
              ;
   factor     :  u_constant
-             |  LPAREN expr RPAREN             { $$ = $2; }            
+             |  variable
+             |  LPAREN expr RPAREN             { $$ = $2; }       
+             |  funcall
+             |  NOT factor          { $$ = unaryop($1, $2); }
              ;
 
 %%
@@ -198,20 +200,23 @@ program    : PROGRAM IDENTIFIER LPAREN idlist RPAREN SEMICOLON vblock DOT { pars
   */
 
 #define DEBUG           31             /* set bits here for debugging, 0 = off  */
-#define DB_CONS         1             /* bit to trace cons */
-#define DB_BINOP        2             /* bit to trace binop */
-#define DB_MAKEIF       4             /* bit to trace makeif */
-#define DB_MAKEPROGN    8             /* bit to trace makeprogn */
-#define DB_PARSERES     16             /* bit to trace parseresult */
-#define DB_MAKEPROGRAM  3
-#define DB_MAKENUM      3
-#define DB_MAKELABEL    3
-#define DB_MAKEOP       3
-#define DB_MAKECOPY     3
-#define DB_MAKEGOTO     3
-#define DB_MAKEFOR      1
-#define DB_MAKEFUNCALL  1
-#define DB_UNOP         2  
+#define DB_CONS         0             /* bit to trace cons */
+#define DB_BINOP        0             /* bit to trace binop */
+#define DB_MAKEIF       0             /* bit to trace makeif */
+#define DB_MAKEPROGN    0             /* bit to trace makeprogn */
+#define DB_PARSERES     0             /* bit to trace parseresult */
+#define DB_MAKEPROGRAM  0
+#define DB_MAKENUM      0
+#define DB_MAKELABEL    0
+#define DB_MAKEOP       0
+#define DB_MAKECOPY     0
+#define DB_MAKEGOTO     0
+#define DB_MAKEFOR      0
+#define DB_MAKEFUNCALL  0
+#define DB_UNOP         0
+#define DB_FINDID       1  
+#define DB_INSTCONST    1  
+
 
  int labelnumber = 0;  /* sequential counter for internal label numbers */
 
@@ -298,7 +303,10 @@ void  instconst(TOKEN idtok, TOKEN consttok) {
   {
       sym->constval.intnum = consttok->intval;
   }
-
+  if (DEBUG & DB_INSTCONST) {
+    printf("install const\n");
+    dbugprinttok(sym);
+  }
 }
 
 TOKEN makeif(TOKEN tok, TOKEN exp, TOKEN thenpart, TOKEN elsepart)
@@ -473,6 +481,12 @@ TOKEN findid(TOKEN tok) { /* the ID token */
         tok->datatype = INTEGER;
         tok->intval = sym->constval.intnum;
       }
+
+      if (DEBUG & DB_FINDID) { 
+        printf("hit constant\n");
+        dbugprinttok(sym);
+        debugprinttok(tok);
+      };
       return tok;
     }
 
@@ -481,6 +495,12 @@ TOKEN findid(TOKEN tok) { /* the ID token */
     if ( typ->kind == BASICTYPE ||
          typ->kind == POINTERSYM)
         tok->datatype = typ->basicdt;
+
+    if (DEBUG & DB_FINDID) { 
+      printf("hit identifier\n");
+      dbugprinttok(sym);
+      debugprinttok(tok);
+    };
 
     return tok;
   }
