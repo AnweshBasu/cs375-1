@@ -292,6 +292,23 @@ TOKEN binop(TOKEN op, TOKEN lhs, TOKEN rhs)        /* reduce binary operator */
         }
       } 
     } else if (isID(lhs)) {
+      if(isReal(lhs) && rhs->datatype == REAL) {
+        op->datatype = real;
+      } else if (isReal(lhs) && rhs->datatype == INTEGER) {
+        op->datatype = REAL;
+        TOKEN ftok = makefloat(rhs);
+        lhs->link = ftok;
+      } else if (isInt(lhs) && rhs->dataype == REAL) {
+        if (op->whichval == ASSIGNOP) {
+          op->datatype = INTEGER;
+          TOKEN fixtok = makefix(rhs);
+          lhs->link = fixtok;
+        } else {
+          op->datatype = REAL;
+          TOKEN ftok = makefloat(lhs);
+          ftok->link = rhs;
+        }
+      } 
 
     } else if (isID(rhs)) {
 
