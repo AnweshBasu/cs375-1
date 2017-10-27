@@ -102,13 +102,13 @@ program    : PROGRAM IDENTIFIER LPAREN idlist RPAREN SEMICOLON vblock DOT { pars
   idlist     :  IDENTIFIER COMMA idlist { $$ = cons($1, $3); }
              |  IDENTIFIER    { $$ = cons($1, NULL); }
              ;
-  clist      :  IDENTIFIER EQ constant clist    { $$ = instconst($1, $3) }
-             |  IDENTIFIER EQ constant          { $$ = instconst($1, $3) }
+  clist      :  IDENTIFIER EQ constant clist    { $$ = instconst($1, $3); }
+             |  IDENTIFIER EQ constant          { $$ = instconst($1, $3); }
              ;  
   tlist      :  IDENTIFIER EQ TYPE tlist
              |  IDENTIFIER EQ TYPE
              ;
-  s_list     :  statement SEMICOLON s_list      { $$ = cons($1, $3) }
+  s_list     :  statement SEMICOLON s_list      { $$ = cons($1, $3); }
              |  statement
              ;
   cblock     :  CONST clist tblock              { $$ = $3}
@@ -136,7 +136,7 @@ program    : PROGRAM IDENTIFIER LPAREN idlist RPAREN SEMICOLON vblock DOT { pars
              |  assignment
              |  funcall
              |  FOR assignment TO expr DO statement   { $$ = makefor(1, $1, $2, $3, $4, $5, $6); }
-             |  REPEAT s_list UNTIL endexpr
+             |  REPEAT s_list UNTIL expr
              ;
   funcall    :  IDENTIFIER LPAREN expr_list RPAREN    { $$ = makefuncall($2, $1, $3); }
              ;
@@ -151,21 +151,41 @@ program    : PROGRAM IDENTIFIER LPAREN idlist RPAREN SEMICOLON vblock DOT { pars
              ;
   assignment :  variable ASSIGN expr         { $$ = binop($2, $1, $3); }
              ;
-  variable   :  IDENTIFIER
+  variable   :  IDENTIFIER                   { $$ = findid($1); }
              |  variable LBRACKET expr_list RBRACKET
              |  variable DOT IDENTIFIER
              |  variable POINT
              ;
-  s_expr     :  
-  expr       :  expr PLUS term                 { $$ = binop($2, $1, $3); }
-             |  term 
+  plus_op    :  PLUS 
+             |  MINUS 
+             |  OR
              ;
-  term       :  term TIMES factor              { $$ = binop($2, $1, $3); }
+  compare_op :  EQ 
+             |  LT 
+             |  GT 
+             |  NE 
+             |  LE 
+             |  GE 
+             |  IN
+             ;
+  times_op   :  TIMES 
+             |  DIVIDE 
+             |  DIV 
+             |  MOD 
+             |  AND
+             ;
+  s_expr     :  sign term                       { $$ = unaryop($1, $2); }
+             |  term 
+             |  s_expr plus_op term                 { $$ = binop($2, $1, $3); }
+             ;
+  expr       :  expr compare_op s_expr              { $$ = binop($2, $1, $3); }
+             |  s_expr 
+             ;
+  term       :  term times_op factor              { $$ = binop($2, $1, $3); }
              |  factor
              ;
-  factor     :  LPAREN expr RPAREN             { $$ = $2; }
-
-             |  u_constant
+  factor     :  u_constant
+             |  LPAREN expr RPAREN             { $$ = $2; }            
              ;
 
 %%
@@ -191,6 +211,7 @@ program    : PROGRAM IDENTIFIER LPAREN idlist RPAREN SEMICOLON vblock DOT { pars
 #define DB_MAKEGOTO     3
 #define DB_MAKEFOR      1
 #define DB_MAKEFUNCALL  1
+#define DB_UNOP         2  
 
  int labelnumber = 0;  /* sequential counter for internal label numbers */
 
@@ -206,6 +227,18 @@ TOKEN cons(TOKEN item, TOKEN list)           /* add item to front of list */
        };
     return item;
   }
+
+/* unaryop links a unary operator op to one operand, lhs */
+TOKEN unaryop(TOKEN op, TOKEN lhs) {
+  op->operands = lhs;
+  lhs->link = NULL;
+  if (DEBUG & DB_UNOP)
+     { printf("unaryop\n");
+       dbugprinttok(op);
+       dbugprinttok(lhs);
+     };
+  return op;  
+}
 
 TOKEN binop(TOKEN op, TOKEN lhs, TOKEN rhs)        /* reduce binary operator */
   { op->operands = lhs;          /* link operands to operator       */
@@ -383,6 +416,12 @@ TOKEN makefuncall(TOKEN tok, TOKEN fn, TOKEN args) {
          dbugprinttok(tok);
   }
   return tok;
+}
+
+/* makerepeat makes structures for a repeat statement.
+   tok and tokb are (now) unused tokens that are recycled. */
+TOKEN makerepeat(TOKEN tok, TOKEN statements, TOKEN tokb, TOKEN expr) {
+  
 }
 
 TOKEN makeprogn(TOKEN tok, TOKEN statements)
