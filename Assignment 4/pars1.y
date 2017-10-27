@@ -85,8 +85,7 @@ TOKEN parseresult;
 
 program    : PROGRAM IDENTIFIER LPAREN idlist RPAREN SEMICOLON cblock DOT { parseresult = makeprogram($2, $4, $7); } ;
              ;
-  u_constant :  IDENTIFIER 
-             |  NUMBER
+  u_constant :  NUMBER
              |  NIL 
              |  STRING
              ;
@@ -201,7 +200,7 @@ program    : PROGRAM IDENTIFIER LPAREN idlist RPAREN SEMICOLON cblock DOT { pars
 
 #define DEBUG           31             /* set bits here for debugging, 0 = off  */
 #define DB_CONS         0             /* bit to trace cons */
-#define DB_BINOP        0             /* bit to trace binop */
+#define DB_BINOP        1             /* bit to trace binop */
 #define DB_MAKEIF       0             /* bit to trace makeif */
 #define DB_MAKEPROGN    0             /* bit to trace makeprogn */
 #define DB_PARSERES     0             /* bit to trace parseresult */
@@ -216,8 +215,8 @@ program    : PROGRAM IDENTIFIER LPAREN idlist RPAREN SEMICOLON cblock DOT { pars
 #define DB_UNOP         0
 #define DB_FINDID       0  
 #define DB_INSTCONST    0  
-#define DB_MAKEREPEAT   1
-
+#define DB_MAKEREPEAT   0
+ 
 
  int labelnumber = 0;  /* sequential counter for internal label numbers */
 
@@ -233,6 +232,29 @@ TOKEN cons(TOKEN item, TOKEN list)           /* add item to front of list */
        };
     return item;
   }
+
+int isID(TOKEN tok) {
+  if(tok->tokentype == IDENTIFIERTOK)
+    return 1;
+  else 
+    return 0;
+}
+
+int isReal(TOKEN tok) {
+  TOKEN sym = tok->symentry;
+  if(sym->basicdt == REAL)
+    return 1;
+  else 
+    return 0;
+}
+
+int isInt(TOKEN tok) {
+  TOKEN sym = tok->symentry;
+  if(sym->basicdt == INTEGER)
+    return 1;
+  else 
+    return 0;
+}
 
 /* unaryop links a unary operator op to one operand, lhs */
 TOKEN unaryop(TOKEN op, TOKEN lhs) {
@@ -250,14 +272,77 @@ TOKEN binop(TOKEN op, TOKEN lhs, TOKEN rhs)        /* reduce binary operator */
   { op->operands = lhs;          /* link operands to operator       */
     lhs->link = rhs;             /* link second operand to first    */
     rhs->link = NULL;            /* terminate operand list          */
+
+    if (isID(lhs) && isID(rhs)) {
+      if(isReal(lhs) && isReal(rhs) {
+        op->datatype = REAL;     
+      } else if (isReal(lhs) && isInt(rhs)) {
+        op->datatype = REAL;
+        TOKEN ftok = makefloat(rhs);
+        lhs->link = ftok;
+      } else if (isInt(lhs) && isReal(rhs)) {
+        if (op->whichval == ASSIGNOP) {
+          op->datatype = INTEGER;
+          TOKEN fixtok = makefix(rhs);
+          lhs->link = fixtok;
+        } else {
+          op->datatype = REAL;
+          TOKEN ftok = makefloat(lhs);
+          ftok->link = rhs;
+        }
+      } 
+    } else if (isID(lhs)) {
+
+    } else if (isID(rhs)) {
+
+    } else {
+
+    }
+ 
+
+
+
     if (DEBUG & DB_BINOP)
-       { printf("binop\n");
+       { printf("binop\n"); 
          dbugprinttok(op);
          dbugprinttok(lhs);
-         dbugprinttok(rhs);
+         dbugprinttok(rhs); 
        };
     return op;
   }
+
+
+/* makefloat forces the item tok to be floating, by floating a constant
+   or by inserting a FLOATOP operator */
+TOKEN makefloat(TOKEN tok) {
+  if(isID(tok)) {
+    TOKEN floatop = makeop(FLOATOP);
+    floatop->operands = tok;
+    return floatop;
+  } else {
+    tok->datatype = REAL;
+    tok->realval = (double) tok->intval;
+    return tok;
+  }
+  
+}
+
+
+/* makefix forces the item tok to be integer, by truncating a constant
+   or by inserting a FIXOP operator */
+TOKEN makefix(TOKEN tok) {
+  if(isID(tok)) {
+    TOKEN fixop = makeop(FIXOP);
+    fixop->operands = tok;
+    return fixop;
+  } else { 
+    tok->datatype = INTEGER;
+    tok->intval = (int) tok->realval;
+    return tok;
+  }
+}
+
+
 
 /* makeop makes a new operator token with operator number opnum.
    Example:  makeop(FLOATOP)  */
@@ -378,8 +463,8 @@ TOKEN makefor(int sign, TOKEN tok, TOKEN assign, TOKEN tokb, TOKEN expr, TOKEN t
     int current = labelnumber - 1;
     assign->link = label;
 
-    TOKEN ifs = talloc();
-    TOKEN body = talloc();
+    TOKEN ifs = tokb;
+    TOKEN body = tokc;
     body = makeprogn(body, statements);
 
     TOKEN leoper = makeop(LEOP);
@@ -435,7 +520,7 @@ TOKEN makerepeat(TOKEN tok, TOKEN statements, TOKEN tokb, TOKEN expr) {
    int current = labelnumber - 1;
    tok = makeprogn(tok, label);
 
-   TOKEN body = talloc();
+   TOKEN body = tokb;
    body = makeprogn(body, statements);
    label->link = body;
 
