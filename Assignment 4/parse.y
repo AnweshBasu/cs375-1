@@ -266,9 +266,7 @@ TOKEN binop(TOKEN op, TOKEN lhs, TOKEN rhs)        /* reduce binary operator */
 
     if (isReal(lhs) && isReal(rhs)) {
       op->datatype = REAL;     
-      printf("both real");
     } else if (isReal(lhs) && isInt(rhs)) {
-      printf("hit");
       op->datatype = REAL;
       TOKEN ftok = makefloat(rhs);
       lhs->link = ftok;
