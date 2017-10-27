@@ -138,7 +138,7 @@ program    : PROGRAM IDENTIFIER LPAREN idlist RPAREN SEMICOLON cblock DOT { pars
              |  assignment
              |  funcall
              |  FOR assignment TO expr DO statement   { $$ = makefor(1, $1, $2, $3, $4, $5, $6); }
-             |  REPEAT s_list UNTIL expr    
+             |  REPEAT s_list UNTIL expr              { $$ = makerepeat($1, $2, $3, $4); }
              ;
   funcall    :  IDENTIFIER LPAREN expr_list RPAREN    { $$ = makefuncall($2, $1, $3); }
              ;
@@ -214,8 +214,9 @@ program    : PROGRAM IDENTIFIER LPAREN idlist RPAREN SEMICOLON cblock DOT { pars
 #define DB_MAKEFOR      0
 #define DB_MAKEFUNCALL  0
 #define DB_UNOP         0
-#define DB_FINDID       1  
-#define DB_INSTCONST    1  
+#define DB_FINDID       0  
+#define DB_INSTCONST    0  
+#define DB_MAKEREPEAT   1
 
 
  int labelnumber = 0;  /* sequential counter for internal label numbers */
@@ -429,7 +430,29 @@ TOKEN makefuncall(TOKEN tok, TOKEN fn, TOKEN args) {
 /* makerepeat makes structures for a repeat statement.
    tok and tokb are (now) unused tokens that are recycled. */
 TOKEN makerepeat(TOKEN tok, TOKEN statements, TOKEN tokb, TOKEN expr) {
-  
+
+   TOKEN label = makelabel();
+   int current = labelnumber - 1;
+   tok = makeprogn(tok, label);
+
+   TOKEN body = talloc();
+   body = makeprogn(body, statements);
+   label->link = body;
+
+   TOKEN gototok = makegoto(current);
+   TOKEN emptytok = makeprogn((TOKEN) talloc(), NULL);
+   emptytok->link = gototok;
+
+   TOKEN ifs = talloc();
+   ifs = makeif(ifs, expr, emptytok, gototok);
+   body->link = ifs;
+
+   if (DEBUG && DB_MAKEREPEAT) {
+         printf("make repeat\n");
+         dbugprinttok(tok);
+   }
+
+   return tok;  
 }
 
 TOKEN makeprogn(TOKEN tok, TOKEN statements)
