@@ -200,7 +200,7 @@ program    : PROGRAM IDENTIFIER LPAREN idlist RPAREN SEMICOLON cblock DOT { pars
 
 #define DEBUG           31             /* set bits here for debugging, 0 = off  */
 #define DB_CONS         0             /* bit to trace cons */
-#define DB_BINOP        1             /* bit to trace binop */
+#define DB_BINOP        0             /* bit to trace binop */
 #define DB_MAKEIF       0             /* bit to trace makeif */
 #define DB_MAKEPROGN    0             /* bit to trace makeprogn */
 #define DB_PARSERES     0             /* bit to trace parseresult */
@@ -233,24 +233,15 @@ TOKEN cons(TOKEN item, TOKEN list)           /* add item to front of list */
     return item;
   }
 
-int isID(TOKEN tok) {
-  if(tok->tokentype == IDENTIFIERTOK)
-    return 1;
-  else 
-    return 0;
-}
-
 int isReal(TOKEN tok) {
-  TOKEN sym = tok->symentry;
-  if(sym->basicdt == REAL)
+  if(tok->datatype == REAL)
     return 1;
   else 
     return 0;
 }
 
 int isInt(TOKEN tok) {
-  TOKEN sym = tok->symentry;
-  if(sym->basicdt == INTEGER)
+  if(tok->datatype == INTEGER)
     return 1;
   else 
     return 0;
@@ -273,50 +264,27 @@ TOKEN binop(TOKEN op, TOKEN lhs, TOKEN rhs)        /* reduce binary operator */
     lhs->link = rhs;             /* link second operand to first    */
     rhs->link = NULL;            /* terminate operand list          */
 
-    if (isID(lhs) && isID(rhs)) {
-      if(isReal(lhs) && isReal(rhs) {
-        op->datatype = REAL;     
-      } else if (isReal(lhs) && isInt(rhs)) {
+    if(isReal(lhs) && isReal(rhs)) {
+      op->datatype = REAL;     
+    } else if (isReal(lhs) && isInt(rhs)) {
+      printf("hit");
+      dbugprinttok(op);
+      dbugprinttok(lhs);
+      dbugprinttok(rhs);
+      op->datatype = REAL;
+      TOKEN ftok = makefloat(rhs);
+      lhs->link = ftok;
+    } else if (isInt(lhs) && isReal(rhs)) {
+      if (op->whichval == ASSIGNOP) {
+        op->datatype = INTEGER;
+        TOKEN fixtok = makefix(rhs);
+        lhs->link = fixtok;
+      } else {
         op->datatype = REAL;
-        TOKEN ftok = makefloat(rhs);
-        lhs->link = ftok;
-      } else if (isInt(lhs) && isReal(rhs)) {
-        if (op->whichval == ASSIGNOP) {
-          op->datatype = INTEGER;
-          TOKEN fixtok = makefix(rhs);
-          lhs->link = fixtok;
-        } else {
-          op->datatype = REAL;
-          TOKEN ftok = makefloat(lhs);
-          ftok->link = rhs;
-        }
-      } 
-    } else if (isID(lhs)) {
-      if(isReal(lhs) && rhs->datatype == REAL) {
-        op->datatype = real;
-      } else if (isReal(lhs) && rhs->datatype == INTEGER) {
-        op->datatype = REAL;
-        TOKEN ftok = makefloat(rhs);
-        lhs->link = ftok;
-      } else if (isInt(lhs) && rhs->dataype == REAL) {
-        if (op->whichval == ASSIGNOP) {
-          op->datatype = INTEGER;
-          TOKEN fixtok = makefix(rhs);
-          lhs->link = fixtok;
-        } else {
-          op->datatype = REAL;
-          TOKEN ftok = makefloat(lhs);
-          ftok->link = rhs;
-        }
-      } 
-
-    } else if (isID(rhs)) {
-
-    } else {
-
-    }
- 
-
+        TOKEN ftok = makefloat(lhs);
+        ftok->link = rhs;
+      }
+    } 
 
 
     if (DEBUG & DB_BINOP)
@@ -332,14 +300,14 @@ TOKEN binop(TOKEN op, TOKEN lhs, TOKEN rhs)        /* reduce binary operator */
 /* makefloat forces the item tok to be floating, by floating a constant
    or by inserting a FLOATOP operator */
 TOKEN makefloat(TOKEN tok) {
-  if(isID(tok)) {
-    TOKEN floatop = makeop(FLOATOP);
-    floatop->operands = tok;
-    return floatop;
-  } else {
+  if(tok->tokentype == NUMBERTOK) {
     tok->datatype = REAL;
     tok->realval = (double) tok->intval;
     return tok;
+  } else {
+    TOKEN floatop = makeop(FLOATOP);
+    floatop->operands = tok;
+    return floatop;
   }
   
 }
@@ -348,14 +316,14 @@ TOKEN makefloat(TOKEN tok) {
 /* makefix forces the item tok to be integer, by truncating a constant
    or by inserting a FIXOP operator */
 TOKEN makefix(TOKEN tok) {
-  if(isID(tok)) {
-    TOKEN fixop = makeop(FIXOP);
-    fixop->operands = tok;
-    return fixop;
-  } else { 
+  if(tok->tokentype == NUMBERTOK) {
     tok->datatype = INTEGER;
     tok->intval = (int) tok->realval;
     return tok;
+  } else { 
+    TOKEN fixop = makeop(FIXOP);
+    fixop->operands = tok;
+    return fixop;
   }
 }
 
