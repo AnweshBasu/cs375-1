@@ -83,7 +83,7 @@ TOKEN parseresult;
 
 %%
 
-program    : PROGRAM IDENTIFIER LPAREN idlist RPAREN SEMICOLON lblock DOT { parseresult = makeprogram($2, $4, $7); } ;
+  program    : PROGRAM IDENTIFIER LPAREN idlist RPAREN SEMICOLON lblock DOT { parseresult = makeprogram($2, $4, $7); } ;
              ;
   u_constant :  NUMBER
              |  NIL 
@@ -101,21 +101,23 @@ program    : PROGRAM IDENTIFIER LPAREN idlist RPAREN SEMICOLON lblock DOT { pars
   idlist     :  IDENTIFIER COMMA idlist { $$ = cons($1, $3); }
              |  IDENTIFIER    { $$ = cons($1, NULL); }
              ;
-  numlist    :  NUMBER COMMA numlist { instlabel($1); }
-             |  NUMBER        { instlabel($1); }
+  numlist    :  NUMBER COMMA numlist  { instlabel($1); }
+             |  NUMBER                { instlabel($1); }
              ;
   cdef       :  IDENTIFIER EQ constant { instconst($1, $3); }
              ;
   clist      :  cdef SEMICOLON clist    
              |  cdef SEMICOLON          
              ;  
-  tlist      :  IDENTIFIER EQ TYPE tlist
-             |  IDENTIFIER EQ TYPE
+  tdef       :  IDENTIFIER EQ type     { insttype($1, $3); }
+             ;
+  tlist      :  tdef SEMICOLON tlist
+             |  tdef SEMICOLON
              ;
   s_list     :  statement SEMICOLON s_list      { $$ = cons($1, $3); }
              |  statement
              ;
-  label      :  NUMBER COLON statement          { $$ = dolabel($1, $2, $3); }
+  label      :  NUMBER COLON statement         // { $$ = dolabel($1, $2, $3); }
              ;
   lblock     :  LABEL numlist SEMICOLON cblock  { $$ = $4; }
              |  cblock
@@ -134,9 +136,22 @@ program    : PROGRAM IDENTIFIER LPAREN idlist RPAREN SEMICOLON lblock DOT { pars
              ;
   vargroup   :  idlist COLON type { instvars($1, $3); }
              ;
+  fields     :  idlist COLON type            // { instfields($1, $3); }
+             ;
+  field_list :  fields SEMICOLON field_list  // { $$ = nconc($1, $3); }
+             |  fields
+             ;
   type       :  simpletype
+             |  ARRAY LBRACKET stype_list RBRACKET OF type   // { instarray($3, $6); }
+             |  RECORD field_list END                        // { instrec($1, $2); }
+             |  POINT IDENTIFIER                             // { instpoint($1, $2); }
+             ;
+  stype_list :  simpletype COMMA stype_list  { $$ = cons($1, $3); }
+             |  simpletype                { $$ = cons($1, NULL); }
              ;
   simpletype :  IDENTIFIER   { $$ = findtype($1); }
+             |  LPAREN idlist RPAREN         { instenum($2); }
+             |  constant DOTDOT constant     { instdotdot($1, $2, $3); }
              ;
   block      :  BEGINBEGIN statement endpart   { $$ = makeprogn($1,cons($2, $3)); }  
              ;
@@ -144,15 +159,15 @@ program    : PROGRAM IDENTIFIER LPAREN idlist RPAREN SEMICOLON lblock DOT { pars
              |  IF expr THEN statement endif   { $$ = makeif($1, $2, $4, $5); }
              |  assignment
              |  funcall
+             |  WHILE expr DO statement      // { $$ = makewhile($1, $2, $3, $4); }
              |  FOR assignment TO expr DO statement   { $$ = makefor(1, $1, $2, $3, $4, $5, $6); }
              |  REPEAT s_list UNTIL expr              { $$ = makerepeat($1, $2, $3, $4); }
+             |  GOTO NUMBER                 // { $$ = dogoto($1, $2); }
              |  label
              ;
   funcall    :  IDENTIFIER LPAREN expr_list RPAREN    { $$ = makefuncall($2, $1, $3); }
              ;
-  expr_list  :  expr COMMA expr_list           { $$ = cons($1, $3); }
-             |  expr
-             ;
+
   endpart    :  SEMICOLON statement endpart    { $$ = cons($2, $3); }
              |  END                            { $$ = NULL; }
              ;
@@ -162,6 +177,9 @@ program    : PROGRAM IDENTIFIER LPAREN idlist RPAREN SEMICOLON lblock DOT { pars
   assignment :  variable ASSIGN expr         { $$ = binop($2, $1, $3); }
              ;
   variable   :  IDENTIFIER                            { $$ = findid($1); }
+             |  variable LBRACKET expr_list RBRACKET  // { $$ = arrayref($1, $2, $3, $4); }
+             |  variable DOT IDENTIFIER               // { $$ = reducedot($1, $2, $3); }
+             |  variable POINT                        // { $$ = dopoint($1, $2); }
              ;
   plus_op    :  PLUS 
              |  MINUS  
@@ -187,6 +205,9 @@ program    : PROGRAM IDENTIFIER LPAREN idlist RPAREN SEMICOLON lblock DOT { pars
              ;
   expr       :  expr compare_op s_expr              { $$ = binop($2, $1, $3); }
              |  s_expr 
+             ;
+  expr_list  :  expr COMMA expr_list           { $$ = cons($1, $3); }
+             |  expr
              ;
   term       :  term times_op factor              { $$ = binop($2, $1, $3); }
              |  factor
@@ -224,8 +245,14 @@ program    : PROGRAM IDENTIFIER LPAREN idlist RPAREN SEMICOLON lblock DOT { pars
 #define DB_UNOP         0
 #define DB_FINDID       0  
 #define DB_INSTCONST    0  
+#define DB_INSTLABEL    1  
+#define DB_FINDLABEL    1  
 #define DB_MAKEREPEAT   0
-#define DB_DOLABEL      0
+#define DB_MAKESUB      1
+#define DB_DOLABEL      1
+#define DB_INSTTYPE     1
+#define DB_INSTENUM     1
+#define DB_INSTDOTDOT   1
 
  
 
@@ -235,7 +262,7 @@ program    : PROGRAM IDENTIFIER LPAREN idlist RPAREN SEMICOLON lblock DOT { pars
    /*  Note: you should add to the above values and insert debugging
        printouts in your routines similar to those that are shown here.     */
 
-TOKEN cons(TOKEN item, TOKEN list)           /* add item to front of list */
+TOKEN cons(TOKEN item, TOKEN list)            /* add item to front of list */
   { item->link = list;
     if (DEBUG & DB_CONS)
        { printf("cons\n");
@@ -515,6 +542,27 @@ TOKEN makerepeat(TOKEN tok, TOKEN statements, TOKEN tokb, TOKEN expr) {
    return tok;  
 }
 
+/* makesubrange makes a SUBRANGE symbol table entry, puts the pointer to it
+   into tok, and returns tok. */
+TOKEN makesubrange(TOKEN tok, int low, int high) {
+
+  SYMBOL subrange = symalloc();
+  subrange->kind = SUBRANGE;
+  subrange->basicdt = INTEGER;
+  subrange->lowbound = low;
+  subrange->highbound = high;
+  subrange->size = basicsizes[INTEGER];
+  tok->symtype = subrange;
+
+  if (DEBUG & DB_MAKESUB) {
+    printf("making subrange");
+    dbugprinttok(tok);
+  }
+
+  return tok;
+}
+
+
 TOKEN makeprogn(TOKEN tok, TOKEN statements)
   {  tok->tokentype = OPERATOR;
      tok->whichval = PROGNOP;
@@ -547,6 +595,9 @@ TOKEN makeprogram(TOKEN name, TOKEN args, TOKEN statements) {
 
 /* finds label number in label table for user defined labels */
 int findlabelnumber(int label) {
+  if (DEBUG & DB_FINDLABEL) {
+    printf("finding label");
+  }
   for(int i = 0; i < labelnumber; i ++) {
     if (labeltable[i] == label) {
       return i;
@@ -599,7 +650,7 @@ TOKEN findid(TOKEN tok) { /* the ID token */
       if (DEBUG & DB_FINDID) { 
         printf("hit constant\n");
         dbugprinttok(sym);
-        debugprinttok(tok);
+        dbugprinttok(tok);
       };
       return tok;
     }
@@ -613,7 +664,7 @@ TOKEN findid(TOKEN tok) { /* the ID token */
     if (DEBUG & DB_FINDID) { 
       printf("hit identifier\n");
       dbugprinttok(sym);
-      debugprinttok(tok);
+      dbugprinttok(tok);
     };
 
     return tok;
@@ -671,7 +722,73 @@ void  instconst(TOKEN idtok, TOKEN consttok) {
 /* instlabel installs a user label into the label table */
 void  instlabel (TOKEN num) {
   labeltable[labelnumber++] = num->intval;  
+  if (DEBUG & DB_INSTLABEL) {
+    printf("install label\n");
+  }
 }
+
+/* instenum installs an enumerated subrange in the symbol table,
+   e.g., type color = (red, white, blue)
+   by calling makesubrange and returning the token it returns. */
+TOKEN instenum(TOKEN idlist) {
+  int count = 0;
+
+  TOKEN list = copytok(idlist);
+  while (list) {
+    instconst(list, makeintc(count));
+    count ++;
+    list = list->link;
+  }
+
+  if (DEBUG & DB_INSTENUM) {
+    printf("install enum\n");
+    dbugprinttok(idlist);
+  }
+
+  return makesubrange(idlist, 0, count - 1);
+}
+
+/* instdotdot installs a .. subrange in the symbol table.
+   dottok is a (now) unused token that is recycled. */
+TOKEN instdotdot(TOKEN lowtok, TOKEN dottok, TOKEN hightok) {
+  int low = lowtok->intval;
+  int high = hightok->intval;
+
+  if (DEBUG & DB_INSTDOTDOT) {
+    printf("install dot dot\n");
+    dbugprinttok(lowtok);
+    dbugprinttok(hightok);
+  }
+
+
+  return makesubrange(dottok, low, high);
+}
+
+/* instarray installs an array declaration into the symbol table.
+   bounds points to a SUBRANGE symbol table entry.
+   The symbol table pointer is returned in token typetok. */
+TOKEN instarray(TOKEN bounds, TOKEN typetok) {
+  
+}
+
+
+
+
+
+
+
+/* insttype will install a type name in symbol table.
+   typetok is a token containing symbol table pointers. */
+void  insttype(TOKEN typename, TOKEN typetok) {
+  
+
+
+
+  if (DEBUG & DB_INSTTYPE) {
+    printf("install type\n");
+  }
+}
+
 
 int wordaddress(int n, int wordsize)
   { return ((n + wordsize - 1) / wordsize) * wordsize; }
