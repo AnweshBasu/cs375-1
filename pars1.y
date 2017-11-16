@@ -142,7 +142,7 @@ TOKEN parseresult;
              |  fields
              ;
   type       :  simpletype
-             |  ARRAY LBRACKET stype_list RBRACKET OF type   // { instarray($3, $6); }
+             |  ARRAY LBRACKET stype_list RBRACKET OF type   { instarray($3, $6); }
              |  RECORD field_list END                        // { instrec($1, $2); }
              |  POINT IDENTIFIER                             // { instpoint($1, $2); }
              ;
@@ -235,7 +235,7 @@ TOKEN parseresult;
 #define DB_MAKEPROGN    0             /* bit to trace makeprogn */
 #define DB_PARSERES     0             /* bit to trace parseresult */
 #define DB_MAKEPROGRAM  0
-#define DB_MAKEINTC     0
+#define DB_MAKEINTC     1
 #define DB_MAKELABEL    0
 #define DB_MAKEOP       0
 #define DB_MAKECOPY     0
@@ -244,7 +244,7 @@ TOKEN parseresult;
 #define DB_MAKEFUNCALL  0
 #define DB_UNOP         0
 #define DB_FINDID       0  
-#define DB_INSTCONST    0  
+#define DB_INSTCONST    1  
 #define DB_INSTLABEL    1  
 #define DB_FINDLABEL    1  
 #define DB_MAKEREPEAT   0
@@ -253,6 +253,8 @@ TOKEN parseresult;
 #define DB_INSTTYPE     1
 #define DB_INSTENUM     1
 #define DB_INSTDOTDOT   1
+#define DB_INSTARRAY   1
+
 
  
 
@@ -742,7 +744,7 @@ TOKEN instenum(TOKEN idlist) {
 
   if (DEBUG & DB_INSTENUM) {
     printf("install enum\n");
-    dbugprinttok(idlist);
+    dbugprinttok(list);
   }
 
   return makesubrange(idlist, 0, count - 1);
@@ -760,7 +762,6 @@ TOKEN instdotdot(TOKEN lowtok, TOKEN dottok, TOKEN hightok) {
     dbugprinttok(hightok);
   }
 
-
   return makesubrange(dottok, low, high);
 }
 
@@ -768,14 +769,53 @@ TOKEN instdotdot(TOKEN lowtok, TOKEN dottok, TOKEN hightok) {
    bounds points to a SUBRANGE symbol table entry.
    The symbol table pointer is returned in token typetok. */
 TOKEN instarray(TOKEN bounds, TOKEN typetok) {
+  if (bounds->link == NULL) {
+    SYMBOL subrange = bounds->symtype;
+    SYMBOL typesym = searchst(typetok->stringval);
+
+    SYMBOL arraysym = symalloc();
+    arraysym->kind = ARRAYSYM;
+    arraysym->datatype = typesym;
+    arraysym->lowbound = subrange->lowbound;
+    arraysym->highbound = subrange->highbound;
+    arraysym->size = (arraysym->lowbound + arraysym->highbound - 1) * (typesym->size);
+    typetok->symtype = arraysym;
+
+    if (DEBUG & DB_INSTARRAY) {
+      printf("install array\n");
+      dbugprinttok(typetok);
+    }
+
+    return typetok;
+  }
+
+  typetok = instarray(bounds->link, typetok);
   
+  SYMBOL subrange = bounds->symtype;
+  SYMBOL arraysym = symalloc();
+
+  arraysym->kind = ARRAYSYM;
+  arraysym->datatype = typetok->symtype;
+  arraysym->lowbound = subrange->lowbound;
+  arraysym->highbound = subrange->highbound;
+  arraysym->size = (arraysym->lowbound + arraysym->highbound - 1) * (typetok->symtype->size);
+  typetok->symtype = arraysym;
+
+  if (DEBUG & DB_INSTARRAY) {
+      printf("install array\n");
+      dbugprinttok(typetok);
+  }
+
+  return typetok;
+
 }
 
-
-
-
-
-
+/* instrec will install a record definition.  Each token in the linked list
+   argstok has a pointer its type.  rectok is just a trash token to be
+   used to return the result in its symtype */
+TOKEN instrec(TOKEN rectok, TOKEN argstok) {
+  
+}
 
 /* insttype will install a type name in symbol table.
    typetok is a token containing symbol table pointers. */
