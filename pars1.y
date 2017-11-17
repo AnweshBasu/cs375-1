@@ -228,35 +228,36 @@ TOKEN parseresult;
   */
 
 #define DEBUG           31             /* set bits here for debugging, 0 = off  */
-#define DB_CONS         0             /* bit to trace cons */
-#define DB_BINOP        0             /* bit to trace binop */
-#define DB_MAKEIF       0             /* bit to trace makeif */
-#define DB_MAKEPROGN    0             /* bit to trace makeprogn */
-#define DB_PARSERES     0             /* bit to trace parseresult */
-#define DB_MAKEPROGRAM  0
-#define DB_MAKEINTC     0
-#define DB_MAKELABEL    0
-#define DB_MAKEOP       0
-#define DB_MAKECOPY     0
-#define DB_MAKEGOTO     0
-#define DB_MAKEFOR      0
-#define DB_MAKEWHILE    0
-#define DB_MAKEFUNCALL  0
-#define DB_UNOP         0
-#define DB_FINDID       0  
-#define DB_INSTCONST    0  
+#define DB_CONS         1             /* bit to trace cons */
+#define DB_BINOP        1             /* bit to trace binop */
+#define DB_MAKEIF       1             /* bit to trace makeif */
+#define DB_MAKEPROGN    1             /* bit to trace makeprogn */
+#define DB_PARSERES     1             /* bit to trace parseresult */
+#define DB_MAKEPROGRAM  1
+#define DB_MAKEINTC     1
+#define DB_MAKELABEL    1
+#define DB_MAKEOP       1
+#define DB_MAKECOPY     1
+#define DB_MAKEGOTO     1
+#define DB_MAKEFOR      1
+#define DB_MAKEWHILE    1
+#define DB_MAKEFUNCALL  1
+#define DB_UNOP         1
+#define DB_FINDID       1  
+#define DB_INSTCONST    1  
 #define DB_INSTLABEL    1   
-#define DB_FINDLABEL    0  
-#define DB_MAKEREPEAT   0
-#define DB_MAKESUB      0
-#define DB_DOLABEL      0
-#define DB_DOGOTO       0
+#define DB_FINDLABEL    1 
+#define DB_FINDTYPE     1   
+#define DB_MAKEREPEAT   1
+#define DB_MAKESUB      1
+#define DB_DOLABEL      1
+#define DB_DOGOTO       1
 #define DB_INSTTYPE     1
 #define DB_INSTENUM     1
 #define DB_INSTDOTDOT   1
 #define DB_INSTARRAY    1
 #define DB_INSTFIELD    1
-#define DB_NCONC        0
+#define DB_NCONC        1
 #define DB_INSTREC      1
 #define DB_INSTPOINT    1
 
@@ -717,6 +718,10 @@ TOKEN findid(TOKEN tok) { /* the ID token */
 TOKEN findtype(TOKEN tok) {
     SYMBOL sym = searchst(tok->stringval);
     tok->symtype = sym;
+    if (DEBUG & DB_FINDTYPE) {
+      printf("type found\n");
+      dbugprinttok(tok);
+    }
     return tok;
   }
 
@@ -855,7 +860,7 @@ TOKEN instdotdot(TOKEN lowtok, TOKEN dottok, TOKEN hightok) {
    bounds points to a SUBRANGE symbol table entry.
    The symbol table pointer is returned in token typetok. */
 TOKEN instarray(TOKEN bounds, TOKEN typetok) {
-  if (bounds->link == NULL) {
+  if (!(bounds->link)) {
     SYMBOL subrange = bounds->symtype;
     SYMBOL typesym = typetok->symtype;
 
@@ -864,7 +869,7 @@ TOKEN instarray(TOKEN bounds, TOKEN typetok) {
     arraysym->datatype = typesym;
     arraysym->lowbound = subrange->lowbound;
     arraysym->highbound = subrange->highbound;
-    arraysym->size = (arraysym->lowbound + arraysym->highbound - 1) * (typesym->size);
+    //arraysym->size = (arraysym->lowbound + arraysym->highbound - 1) * (typesym->size);
     typetok->symtype = arraysym;
 
     if (DEBUG & DB_INSTARRAY) {
@@ -951,7 +956,9 @@ TOKEN instrec(TOKEN rectok, TOKEN argstok) {
 
   if (DEBUG & DB_INSTREC) {
       printf("install rec\n");
+      printf("total size %d\n", recsym->size);
       dbugprinttok(rectok);
+
   }
   return rectok;
 }
@@ -983,12 +990,13 @@ TOKEN instpoint(TOKEN tok, TOKEN typename) {
 void  insttype(TOKEN typename, TOKEN typetok) {
   SYMBOL typesym = searchins(typename->stringval);
   typesym->kind = TYPESYM;
-//  typesym->datatype = typetok->symtype;
+  typesym->datatype = typetok->symtype;
 //  typesym->size = typetok->symtype->size;
 
   if (DEBUG & DB_INSTTYPE) {
     printf("install type\n");
     dbugprinttok(typename);
+    dbugprinttok(typetok);
   }
 }
 
