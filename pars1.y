@@ -117,6 +117,11 @@ TOKEN parseresult;
   s_list     :  statement SEMICOLON s_list      { $$ = cons($1, $3); }
              |  statement
              ;
+  fields     :  idlist COLON type             { instfields($1, $3); }
+             ;
+  field_list :  fields SEMICOLON field_list   { $$ = nconc($1, $3); }
+             |  fields
+             ;
   label      :  NUMBER COLON statement         // { $$ = dolabel($1, $2, $3); }
              ;
   lblock     :  LABEL numlist SEMICOLON cblock  { $$ = $4; }
@@ -136,14 +141,9 @@ TOKEN parseresult;
              ;
   vargroup   :  idlist COLON type { instvars($1, $3); }
              ;
-  fields     :  idlist COLON type            // { instfields($1, $3); }
-             ;
-  field_list :  fields SEMICOLON field_list  // { $$ = nconc($1, $3); }
-             |  fields
-             ;
   type       :  simpletype
              |  ARRAY LBRACKET stype_list RBRACKET OF type   { instarray($3, $6); }
-             |  RECORD field_list END                        // { instrec($1, $2); }
+             |  RECORD field_list END                         { instrec($1, $2); }
              |  POINT IDENTIFIER                             // { instpoint($1, $2); }
              ;
   stype_list :  simpletype COMMA stype_list  { $$ = cons($1, $3); }
@@ -167,7 +167,6 @@ TOKEN parseresult;
              ;
   funcall    :  IDENTIFIER LPAREN expr_list RPAREN    { $$ = makefuncall($2, $1, $3); }
              ;
-
   endpart    :  SEMICOLON statement endpart    { $$ = cons($2, $3); }
              |  END                            { $$ = NULL; }
              ;
@@ -244,17 +243,19 @@ TOKEN parseresult;
 #define DB_MAKEFUNCALL  0
 #define DB_UNOP         0
 #define DB_FINDID       0  
-#define DB_INSTCONST    1  
-#define DB_INSTLABEL    1  
-#define DB_FINDLABEL    1  
+#define DB_INSTCONST    0  
+#define DB_INSTLABEL    1   
+#define DB_FINDLABEL    0  
 #define DB_MAKEREPEAT   0
-#define DB_MAKESUB      1
-#define DB_DOLABEL      1
-#define DB_INSTTYPE     1
+#define DB_MAKESUB      0
+#define DB_DOLABEL      0
+#define DB_INSTTYPE     0
 #define DB_INSTENUM     1
 #define DB_INSTDOTDOT   1
-#define DB_INSTARRAY   1
-
+#define DB_INSTARRAY    0
+#define DB_INSTFIELD    1
+#define DB_NCONC        1
+#define DB_INSTREC      1
 
  
 
@@ -273,6 +274,25 @@ TOKEN cons(TOKEN item, TOKEN list)            /* add item to front of list */
        };
     return item;
   }
+
+
+/* nconc concatenates two token lists, destructively, by making the last link
+   of lista point to listb.
+   (nconc '(a b) '(c d e))  =  (a b c d e)  */
+/* nconc is useful for putting together two fieldlist groups to
+   make them into a single list in a record declaration. */
+TOKEN nconc(TOKEN lista, TOKEN listb) {
+  TOKEN temp = lista;
+  while(temp->link) {
+    temp = temp->link;
+  }
+  temp->link = listb;
+  if (DEBUG & DB_NCONC) {
+   printf("nconc\n");
+   dbugprinttok(temp);
+  };
+  return temp;
+}
 
 int isReal(TOKEN tok) {
   if(tok->datatype == REAL)
@@ -771,7 +791,7 @@ TOKEN instdotdot(TOKEN lowtok, TOKEN dottok, TOKEN hightok) {
 TOKEN instarray(TOKEN bounds, TOKEN typetok) {
   if (bounds->link == NULL) {
     SYMBOL subrange = bounds->symtype;
-    SYMBOL typesym = searchst(typetok->stringval);
+    SYMBOL typesym = typetok->symtype;
 
     SYMBOL arraysym = symalloc();
     arraysym->kind = ARRAYSYM;
@@ -810,12 +830,72 @@ TOKEN instarray(TOKEN bounds, TOKEN typetok) {
 
 }
 
+/* instfields will install type in a list idlist of field name tokens:
+   re, im: real    put the pointer to REAL in the RE, IM tokens.
+   typetok is a token whose symtype is a symbol table pointer.
+   Note that nconc() can be used to combine these lists after instrec() */
+TOKEN instfields(TOKEN idlist, TOKEN typetok) {
+  SYMBOL typesym = typetok->symtype;
+  TOKEN temp = idlist;
+  while(temp) {
+    temp->datatype = typesym;     //ASK PROF
+    temp = temp->link;
+  }
+
+
+  if (DEBUG & DB_INSTFIELD) {
+      printf("install fields\n");
+      dbugprinttok(idlist);
+  }
+
+  return idlist;
+}
+
 /* instrec will install a record definition.  Each token in the linked list
    argstok has a pointer its type.  rectok is just a trash token to be
    used to return the result in its symtype */
 TOKEN instrec(TOKEN rectok, TOKEN argstok) {
-  
+  //Do storage allocation algorithm
+
+  SYMBOL recsym = symalloc();
+  recsym->kind = RECORDSYM;
+  int count = 0, next = 0, align;
+
+  SYMBOL prev;
+  while (argstok) {
+    align = alignsize(argstok->symtype);
+    SYMBOL recfield = makesym(argstok->stringval);
+    recfield->datatype = argstok->symtype;
+    recfield->offset = wordaddress(next, align);
+    recfield->size = argstok->symtype->size;
+    next = recfield->offset + recfield->size;
+    if (count == 0) {
+      recsym->datatype = recfield;
+      prev = recfield;
+    } else {
+      prev->link = recfield;
+      prev = recfield;
+    }
+    count ++;
+    argstok = argstok->link;
+  }
+
+  recsym->size = wordaddress(next, 8); //ASK PROF
+  rectok->symtype = recsym;
+
+  if (DEBUG & DB_INSTREC) {
+      printf("install rec\n");
+      dbugprinttok(rectok);
+  }
+  return rectok;
 }
+
+/* instpoint will install a pointer type in symbol table */
+TOKEN instpoint(TOKEN tok, TOKEN typename) {
+  //SYMBOL
+  return tok;
+}
+
 
 /* insttype will install a type name in symbol table.
    typetok is a token containing symbol table pointers. */
