@@ -717,9 +717,13 @@ TOKEN findid(TOKEN tok) { /* the ID token */
 
 TOKEN findtype(TOKEN tok) {
     SYMBOL sym = searchst(tok->stringval);
+//    if (sym->kind == TYPESYM) {
+//      printf("hit");
+//      sym = sym->datatype;
+//   }
     tok->symtype = sym;
     if (DEBUG & DB_FINDTYPE) {
-      printf("type found\n");
+      printf("finding type\n");
       dbugprinttok(tok);
     }
     return tok;
@@ -860,7 +864,28 @@ TOKEN instdotdot(TOKEN lowtok, TOKEN dottok, TOKEN hightok) {
    bounds points to a SUBRANGE symbol table entry.
    The symbol table pointer is returned in token typetok. */
 TOKEN instarray(TOKEN bounds, TOKEN typetok) {
-  if (!(bounds->link)) {
+  if (bounds->link) {
+    typetok = instarray(bounds->link, typetok);
+
+    SYMBOL subrange = bounds->symtype;
+    SYMBOL arraysym = symalloc();
+
+    arraysym->kind = ARRAYSYM;
+    arraysym->datatype = typetok->symtype;
+    arraysym->lowbound = subrange->lowbound;
+    arraysym->highbound = subrange->highbound;
+    arraysym->size = (arraysym->lowbound + arraysym->highbound - 1) * (typetok->symtype->size);
+    typetok->symtype = arraysym;
+
+    if (DEBUG & DB_INSTARRAY) {
+        printf("install array\n");
+        dbugprinttok(typetok);
+    }
+
+  return typetok;
+
+
+  } else {
     SYMBOL subrange = bounds->symtype;
     SYMBOL typesym = typetok->symtype;
 
@@ -879,26 +904,6 @@ TOKEN instarray(TOKEN bounds, TOKEN typetok) {
 
     return typetok;
   }
-
-  typetok = instarray(bounds->link, typetok);
-  
-  SYMBOL subrange = bounds->symtype;
-  SYMBOL arraysym = symalloc();
-
-  arraysym->kind = ARRAYSYM;
-  arraysym->datatype = typetok->symtype;
-  arraysym->lowbound = subrange->lowbound;
-  arraysym->highbound = subrange->highbound;
-  arraysym->size = (arraysym->lowbound + arraysym->highbound - 1) * (typetok->symtype->size);
-  typetok->symtype = arraysym;
-
-  if (DEBUG & DB_INSTARRAY) {
-      printf("install array\n");
-      dbugprinttok(typetok);
-  }
-
-  return typetok;
-
 }
 
 /* instfields will install type in a list idlist of field name tokens:
@@ -927,12 +932,11 @@ TOKEN instfields(TOKEN idlist, TOKEN typetok) {
    used to return the result in its symtype */
 TOKEN instrec(TOKEN rectok, TOKEN argstok) {
   //Do storage allocation algorithm
-
   SYMBOL recsym = symalloc();
   recsym->kind = RECORDSYM;
   int count = 0, next = 0, align;
 
-  SYMBOL prev;
+  SYMBOL prev = NULL;
   while (argstok) {
     align = alignsize(argstok->symtype);
     SYMBOL recfield = makesym(argstok->stringval);
@@ -947,6 +951,7 @@ TOKEN instrec(TOKEN rectok, TOKEN argstok) {
       prev->link = recfield;
       prev = recfield;
     }
+    recfield->link = NULL;
     count ++;
     argstok = argstok->link;
   }
