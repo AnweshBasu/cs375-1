@@ -143,8 +143,8 @@ TOKEN parseresult;
              ;
   type       :  simpletype
              |  ARRAY LBRACKET stype_list RBRACKET OF type   { instarray($3, $6); }
-             |  RECORD field_list END                         { instrec($1, $2); }
-             |  POINT IDENTIFIER                             // { instpoint($1, $2); }
+             |  RECORD field_list END                         // { instrec($1, $2); }
+             |  POINT IDENTIFIER                              { instpoint($1, $2); }
              ;
   stype_list :  simpletype COMMA stype_list  { $$ = cons($1, $3); }
              |  simpletype                { $$ = cons($1, NULL); }
@@ -249,13 +249,14 @@ TOKEN parseresult;
 #define DB_MAKEREPEAT   0
 #define DB_MAKESUB      0
 #define DB_DOLABEL      0
-#define DB_INSTTYPE     0
+#define DB_INSTTYPE     1
 #define DB_INSTENUM     1
 #define DB_INSTDOTDOT   1
-#define DB_INSTARRAY    0
+#define DB_INSTARRAY    1
 #define DB_INSTFIELD    1
-#define DB_NCONC        1
+#define DB_NCONC        0
 #define DB_INSTREC      1
+#define DB_INSTPOINT    1
 
  
 
@@ -880,7 +881,7 @@ TOKEN instrec(TOKEN rectok, TOKEN argstok) {
     argstok = argstok->link;
   }
 
-  recsym->size = wordaddress(next, 8); //ASK PROF
+  recsym->size = next; // wordaddress(next, 8); ASK PROF
   rectok->symtype = recsym;
 
   if (DEBUG & DB_INSTREC) {
@@ -892,7 +893,22 @@ TOKEN instrec(TOKEN rectok, TOKEN argstok) {
 
 /* instpoint will install a pointer type in symbol table */
 TOKEN instpoint(TOKEN tok, TOKEN typename) {
-  //SYMBOL
+
+  SYMBOL typesym = searchins(typename->stringval);
+
+
+  SYMBOL pointsym = symalloc();
+  pointsym->datatype = typesym;
+  pointsym->kind = POINTERSYM;
+  pointsym->size = basicsizes[POINTER];
+
+  tok->symtype = pointsym;
+
+  if (DEBUG & DB_INSTPOINT) {
+      printf("install point\n");
+      dbugprinttok(tok);
+  }
+
   return tok;
 }
 
@@ -900,12 +916,14 @@ TOKEN instpoint(TOKEN tok, TOKEN typename) {
 /* insttype will install a type name in symbol table.
    typetok is a token containing symbol table pointers. */
 void  insttype(TOKEN typename, TOKEN typetok) {
-  
-
-
+  SYMBOL typesym = searchins(typename->stringval);
+  typesym->kind = TYPESYM;
+//  typesym->datatype = typetok->symtype;
+//  typesym->size = typetok->symtype->size;
 
   if (DEBUG & DB_INSTTYPE) {
     printf("install type\n");
+    dbugprinttok(typename);
   }
 }
 
