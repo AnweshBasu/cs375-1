@@ -122,7 +122,7 @@ TOKEN parseresult;
   field_list :  fields SEMICOLON field_list   { $$ = nconc($1, $3); }
              |  fields
              ;
-  label      :  NUMBER COLON statement         // { $$ = dolabel($1, $2, $3); }
+  label      :  NUMBER COLON statement          { $$ = dolabel($1, $2, $3); }
              ;
   lblock     :  LABEL numlist SEMICOLON cblock  { $$ = $4; }
              |  cblock
@@ -159,10 +159,10 @@ TOKEN parseresult;
              |  IF expr THEN statement endif   { $$ = makeif($1, $2, $4, $5); }
              |  assignment
              |  funcall
-             |  WHILE expr DO statement      // { $$ = makewhile($1, $2, $3, $4); }
+             |  WHILE expr DO statement       { $$ = makewhile($1, $2, $3, $4); }
              |  FOR assignment TO expr DO statement   { $$ = makefor(1, $1, $2, $3, $4, $5, $6); }
              |  REPEAT s_list UNTIL expr              { $$ = makerepeat($1, $2, $3, $4); }
-             |  GOTO NUMBER                 // { $$ = dogoto($1, $2); }
+             |  GOTO NUMBER                  { $$ = dogoto($1, $2); }
              |  label
              ;
   funcall    :  IDENTIFIER LPAREN expr_list RPAREN    { $$ = makefuncall($2, $1, $3); }
@@ -230,16 +230,17 @@ TOKEN parseresult;
 #define DEBUG           31             /* set bits here for debugging, 0 = off  */
 #define DB_CONS         0             /* bit to trace cons */
 #define DB_BINOP        1             /* bit to trace binop */
-#define DB_MAKEIF       0             /* bit to trace makeif */
+#define DB_MAKEIF       1             /* bit to trace makeif */
 #define DB_MAKEPROGN    0             /* bit to trace makeprogn */
 #define DB_PARSERES     0             /* bit to trace parseresult */
 #define DB_MAKEPROGRAM  0
-#define DB_MAKEINTC     1
+#define DB_MAKEINTC     0
 #define DB_MAKELABEL    0
 #define DB_MAKEOP       0
 #define DB_MAKECOPY     0
-#define DB_MAKEGOTO     0
+#define DB_MAKEGOTO     1
 #define DB_MAKEFOR      0
+#define DB_MAKEWHILE    1
 #define DB_MAKEFUNCALL  0
 #define DB_UNOP         0
 #define DB_FINDID       0  
@@ -248,7 +249,8 @@ TOKEN parseresult;
 #define DB_FINDLABEL    0  
 #define DB_MAKEREPEAT   0
 #define DB_MAKESUB      0
-#define DB_DOLABEL      0
+#define DB_DOLABEL      1
+#define DB_DOGOTO       1
 #define DB_INSTTYPE     1
 #define DB_INSTENUM     1
 #define DB_INSTDOTDOT   1
@@ -477,6 +479,15 @@ TOKEN makegoto(int num){
   return tok;
 }
 
+
+/* makearef makes an array reference operation.
+   off is be an integer constant token
+   tok (if not NULL) is a (now) unused token that is recycled. */
+TOKEN makearef(TOKEN var, TOKEN off, TOKEN tok) {
+  
+
+}
+
 /* makefor makes structures for a for statement.
    sign is 1 for normal loop, -1 for downto.
    asg is an assignment statement, e.g. (:= i 1)
@@ -522,6 +533,29 @@ TOKEN makefor(int sign, TOKEN tok, TOKEN assign, TOKEN tokb, TOKEN expr, TOKEN t
     return tok;
 }
 
+/* makewhile makes structures for a while statement.
+   tok and tokb are (now) unused tokens that are recycled. */
+TOKEN makewhile(TOKEN tok, TOKEN expr, TOKEN tokb, TOKEN statement) {
+  
+  TOKEN label = makelabel();
+  int current = labelnumber - 1;
+  tok = makeprogn(tok, label);
+
+  TOKEN ifs = tokb;
+  ifs = makeif(ifs, expr, statement, NULL);
+  label->link = ifs;
+
+  TOKEN gototok = makegoto(current);
+  ifs->link = gototok;
+
+
+  if (DEBUG && DB_MAKEWHILE) {
+     printf("makewhile\n");
+     dbugprinttok(tok);
+  }
+  return tok;
+  
+}
 
 /* makefuncall makes a FUNCALL operator and links it to the fn and args.
    tok is a (now) unused token that is recycled. */
@@ -616,6 +650,8 @@ TOKEN makeprogram(TOKEN name, TOKEN args, TOKEN statements) {
     return tok;
   }
 
+
+
 /* finds label number in label table for user defined labels */
 int findlabelnumber(int label) {
   if (DEBUG & DB_FINDLABEL) {
@@ -627,28 +663,6 @@ int findlabelnumber(int label) {
     }
   }
   return -1;
-}
-
-/* dolabel is the action for a label of the form   <number>: <statement>
-   tok is a (now) unused token that is recycled. */
-TOKEN dolabel(TOKEN labeltok, TOKEN tok, TOKEN statement) {
-    int real_label = findlabelnumber(labeltok->intval);
-    if (real_label == -1) {
-      printf("Error: user defined label not found");
-    }
-
-    labeltok = makeop(LABELOP);
-    TOKEN tokb = makeintc(real_label);
-    labeltok->operands=tokb;
-    labeltok->link = statement;
-    tok = makeprogn(tok, tokb);
-
-    if (DEBUG & DB_DOLABEL) {
-      printf("dolabel\n");
-      dbugprinttok(tok);
-    }
-
-    return tok;
 }
 
 /* findid finds an identifier in the symbol table, sets up symbol table
@@ -702,6 +716,45 @@ TOKEN findtype(TOKEN tok) {
     return tok;
   }
 
+/* dolabel is the action for a label of the form   <number>: <statement>
+   tok is a (now) unused token that is recycled. */
+TOKEN dolabel(TOKEN labeltok, TOKEN tok, TOKEN statement) {
+    int real_label = findlabelnumber(labeltok->intval);
+    if (real_label == -1) {
+      printf("Error: user defined label not found");
+    }
+
+    labeltok = makeop(LABELOP);
+    TOKEN tokb = makeintc(real_label);
+    labeltok->operands=tokb;
+    labeltok->link = statement;
+    tok = makeprogn(tok, labeltok);
+
+    if (DEBUG & DB_DOLABEL) {
+      printf("dolabel\n");
+      dbugprinttok(tok);
+    }
+
+    return tok;
+}
+
+/* dogoto is the action for a goto statement.
+   tok is a (now) unused token that is recycled. */
+TOKEN dogoto(TOKEN tok, TOKEN labeltok) {
+    int real_label = findlabelnumber(labeltok->intval);
+    if (real_label == -1) {
+      printf("Error: user defined label not found");
+    }  
+
+    tok = makegoto(real_label);
+    if (DEBUG & DB_DOGOTO) {
+      printf("dogoto\n");
+      dbugprinttok(tok);
+    }
+
+    return tok;
+}
+
 /* install variables in symbol table */
 void instvars(TOKEN idlist, TOKEN typetok)
   {  SYMBOL sym, typesym; int align;
@@ -745,8 +798,16 @@ void  instconst(TOKEN idtok, TOKEN consttok) {
 /* instlabel installs a user label into the label table */
 void  instlabel (TOKEN num) {
   labeltable[labelnumber++] = num->intval;  
+
   if (DEBUG & DB_INSTLABEL) {
     printf("install label\n");
+    printf("current table\n");
+    for (int i = 0; i < labelnumber; i ++) {
+      printf("label ");
+      printf("%d", i);
+      printf(" : ");
+      printf("%d\n", labeltable[i]);
+    }
   }
 }
 
