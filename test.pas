@@ -9,6 +9,6 @@ begin
    	begin
    	  writeln('*');
       i := i + 1
-    end
+    end;
     if lim < 5 then goto 1476
 end.

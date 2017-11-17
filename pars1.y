@@ -143,7 +143,7 @@ TOKEN parseresult;
              ;
   type       :  simpletype
              |  ARRAY LBRACKET stype_list RBRACKET OF type   { instarray($3, $6); }
-             |  RECORD field_list END                         // { instrec($1, $2); }
+             |  RECORD field_list END                          { instrec($1, $2); }
              |  POINT IDENTIFIER                              { instpoint($1, $2); }
              ;
   stype_list :  simpletype COMMA stype_list  { $$ = cons($1, $3); }
@@ -229,8 +229,8 @@ TOKEN parseresult;
 
 #define DEBUG           31             /* set bits here for debugging, 0 = off  */
 #define DB_CONS         0             /* bit to trace cons */
-#define DB_BINOP        1             /* bit to trace binop */
-#define DB_MAKEIF       1             /* bit to trace makeif */
+#define DB_BINOP        0             /* bit to trace binop */
+#define DB_MAKEIF       0             /* bit to trace makeif */
 #define DB_MAKEPROGN    0             /* bit to trace makeprogn */
 #define DB_PARSERES     0             /* bit to trace parseresult */
 #define DB_MAKEPROGRAM  0
@@ -238,19 +238,19 @@ TOKEN parseresult;
 #define DB_MAKELABEL    0
 #define DB_MAKEOP       0
 #define DB_MAKECOPY     0
-#define DB_MAKEGOTO     1
+#define DB_MAKEGOTO     0
 #define DB_MAKEFOR      0
-#define DB_MAKEWHILE    1
+#define DB_MAKEWHILE    0
 #define DB_MAKEFUNCALL  0
 #define DB_UNOP         0
 #define DB_FINDID       0  
 #define DB_INSTCONST    0  
 #define DB_INSTLABEL    1   
-#define DB_FINDLABEL    1  
+#define DB_FINDLABEL    0  
 #define DB_MAKEREPEAT   0
 #define DB_MAKESUB      0
-#define DB_DOLABEL      1
-#define DB_DOGOTO       1
+#define DB_DOLABEL      0
+#define DB_DOGOTO       0
 #define DB_INSTTYPE     1
 #define DB_INSTENUM     1
 #define DB_INSTDOTDOT   1
@@ -904,7 +904,7 @@ TOKEN instfields(TOKEN idlist, TOKEN typetok) {
   SYMBOL typesym = typetok->symtype;
   TOKEN temp = idlist;
   while(temp) {
-    temp->datatype = typesym;     //ASK PROF
+    temp->symtype = typesym;     //ASK PROF
     temp = temp->link;
   }
 
@@ -946,7 +946,7 @@ TOKEN instrec(TOKEN rectok, TOKEN argstok) {
     argstok = argstok->link;
   }
 
-  recsym->size = next; // wordaddress(next, 8); ASK PROF
+  recsym->size = wordaddress(next, 16); 
   rectok->symtype = recsym;
 
   if (DEBUG & DB_INSTREC) {
