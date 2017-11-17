@@ -246,7 +246,7 @@ TOKEN parseresult;
 #define DB_FINDID       0  
 #define DB_INSTCONST    0  
 #define DB_INSTLABEL    1   
-#define DB_FINDLABEL    0  
+#define DB_FINDLABEL    1  
 #define DB_MAKEREPEAT   0
 #define DB_MAKESUB      0
 #define DB_DOLABEL      1
@@ -541,13 +541,13 @@ TOKEN makewhile(TOKEN tok, TOKEN expr, TOKEN tokb, TOKEN statement) {
   int current = labelnumber - 1;
   tok = makeprogn(tok, label);
 
-  TOKEN ifs = tokb;
-  ifs = makeif(ifs, expr, statement, NULL);
-  label->link = ifs;
-
   TOKEN gototok = makegoto(current);
-  ifs->link = gototok;
+  statement->link = gototok;
+  TOKEN body = makeprogn(tokb, statement);
 
+  TOKEN ifs = talloc();
+  ifs = makeif(ifs, expr, body, NULL);
+  label->link = ifs;
 
   if (DEBUG && DB_MAKEWHILE) {
      printf("makewhile\n");
@@ -655,10 +655,14 @@ TOKEN makeprogram(TOKEN name, TOKEN args, TOKEN statements) {
 /* finds label number in label table for user defined labels */
 int findlabelnumber(int label) {
   if (DEBUG & DB_FINDLABEL) {
-    printf("finding label");
+    printf("finding label\n");
   }
   for(int i = 0; i < labelnumber; i ++) {
     if (labeltable[i] == label) {
+      if (DEBUG & DB_FINDLABEL) {
+       printf("found label : ");
+       printf("%d\n", i);
+      }
       return i;
     }
   }

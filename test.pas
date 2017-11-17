@@ -1,5 +1,5 @@
 program test(output);
-label 1476, 1178;
+label 1476;
 var i,lim : integer;
 begin
 	lim := 7;
