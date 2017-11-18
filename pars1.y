@@ -323,16 +323,19 @@ TOKEN unaryop(TOKEN op, TOKEN lhs) {
 }
 
 TOKEN binop(TOKEN op, TOKEN lhs, TOKEN rhs)        /* reduce binary operator */
-  { op->operands = lhs;          /* link operands to operator       */
-    lhs->link = rhs;             /* link second operand to first    */
-    rhs->link = NULL;            /* terminate operand list          */
-
+  {     
     if (rhs->whichval == (NIL - RESERVED_BIAS)) {
       rhs = makeintc(0);
     }
+
+    op->operands = lhs;          /* link operands to operator       */
+    lhs->link = rhs;             /* link second operand to first    */
+    rhs->link = NULL;            /* terminate operand list          */
+
+
+
     if (isReal(lhs) && isReal(rhs)) {
       op->datatype = REAL;     
-      printf("both real");
     } else if (isReal(lhs) && isInt(rhs)) {
       op->datatype = REAL;
       TOKEN ftok = makefloat(rhs);
@@ -480,13 +483,11 @@ TOKEN makegoto(int num){
   return tok;
 }
 
-
 /* makearef makes an array reference operation.
    off is be an integer constant token
    tok (if not NULL) is a (now) unused token that is recycled. */
 TOKEN makearef(TOKEN var, TOKEN off, TOKEN tok) {
   
-
 }
 
 /* makefor makes structures for a for statement.
@@ -545,10 +546,6 @@ TOKEN makewhile(TOKEN tok, TOKEN expr, TOKEN tokb, TOKEN statement) {
   TOKEN gototok = makegoto(current);
   statement->link = gototok;
   TOKEN body = makeprogn(tokb, statement);
-
-  if (expr->operands->link && expr->operands->link->whichval == (NIL - RESERVED_BIAS)){
-    expr->operands->link = makeintc(0);
-  }
 
   TOKEN ifs = talloc();
   ifs = makeif(ifs, expr, body, NULL);
@@ -914,7 +911,7 @@ TOKEN instarray(TOKEN bounds, TOKEN typetok) {
     arraysym->datatype = typesym;
     arraysym->lowbound = subrange->lowbound;
     arraysym->highbound = subrange->highbound;
-    //arraysym->size = (arraysym->lowbound + arraysym->highbound - 1) * (typesym->size);
+    arraysym->size = (arraysym->lowbound + arraysym->highbound - 1) * (typesym->size);
     typetok->symtype = arraysym;
 
     if (DEBUG & DB_INSTARRAY) {
