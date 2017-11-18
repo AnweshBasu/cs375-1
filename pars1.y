@@ -115,7 +115,7 @@ TOKEN parseresult;
              |  tdef SEMICOLON
              ;
   s_list     :  statement SEMICOLON s_list      { $$ = cons($1, $3); }
-             |  statement
+             |  statement                  { $$ = cons($1, NULL); }
              ;
   fields     :  idlist COLON type             { $$ = instfields($1, $3); }
              ;
@@ -176,9 +176,9 @@ TOKEN parseresult;
   assignment :  variable ASSIGN expr         { $$ = binop($2, $1, $3); }
              ;
   variable   :  IDENTIFIER                            { $$ = findid($1); }
-             |  variable LBRACKET expr_list RBRACKET  // { $$ = arrayref($1, $2, $3, $4); }
-             |  variable DOT IDENTIFIER               // { $$ = reducedot($1, $2, $3); }
-             |  variable POINT                        // { $$ = dopoint($1, $2); }
+             |  variable LBRACKET expr_list RBRACKET   { $$ = arrayref($1, $2, $3, $4); }
+             |  variable DOT IDENTIFIER                { $$ = reducedot($1, $2, $3); }
+             |  variable POINT                         { $$ = dopoint($1, $2); }
              ;
   plus_op    :  PLUS 
              |  MINUS  
@@ -206,7 +206,7 @@ TOKEN parseresult;
              |  s_expr 
              ;
   expr_list  :  expr COMMA expr_list           { $$ = cons($1, $3); }
-             |  expr
+             |  expr                        { $$ = cons($1, NULL); }
              ;
   term       :  term times_op factor              { $$ = binop($2, $1, $3); }
              |  factor
@@ -247,11 +247,15 @@ TOKEN parseresult;
 #define DB_INSTCONST    0  
 #define DB_INSTLABEL    0   
 #define DB_FINDLABEL    0 
-#define DB_FINDTYPE     0   
+#define DB_FINDTYPE     0 
+#define DB_REDUCEDOT    1
+#define DB_ARRAYREF     1
 #define DB_MAKEREPEAT   0
 #define DB_MAKESUB      0
+#define DB_MAKEAREF     1
 #define DB_DOLABEL      0
 #define DB_DOGOTO       0
+#define DB_DOPOINT      1
 #define DB_INSTTYPE     0
 #define DB_INSTENUM     0
 #define DB_INSTDOTDOT   0
@@ -483,12 +487,26 @@ TOKEN makegoto(int num){
   return tok;
 }
 
+
 /* makearef makes an array reference operation.
    off is be an integer constant token
    tok (if not NULL) is a (now) unused token that is recycled. */
-TOKEN makearef(TOKEN var, TOKEN off, TOKEN tok) {
-  
+TOKEN makearef(TOKEN var, TOKEN off, TOKEN tok){
+  TOKEN areftok = makeop(AREFOP);
+  var->link = off;
+  areftok->operands = var;
+
+  //SYMBOL symtok = symalloc();
+  //areftok->symtype=
+
+  if (DEBUG && DB_MAKEAREF) {
+      printf("makearef\n");
+      dbugprinttok(areftok);
+  }
+
+  return areftok;
 }
+
 
 /* makefor makes structures for a for statement.
    sign is 1 for normal loop, -1 for downto.
@@ -745,6 +763,63 @@ TOKEN findtype(TOKEN tok) {
     return tok;
   }
 
+/* reducedot handles a record reference.
+   dot is a (now) unused token that is recycled. */
+TOKEN reducedot(TOKEN var, TOKEN dot, TOKEN field) {
+
+  if (var->whichval == AREFOP) {
+
+
+
+  } else {
+    SYMBOL recsym = var->symentry;
+    SYMBOL curfield = recsym->datatype->datatype;
+    int offset = 0;
+
+    while(curfield) {
+      if (strcmp(curfield->namestring, field->stringval) == 0) {
+        offset = curfield->offset;
+        break;
+      } else {
+        curfield = curfield->link;
+      }
+    }
+
+    dot = makearef(var, offset, dot);
+
+    if (DEBUG & DB_REDUCEDOT) {
+      printf("reducedot\n");
+      //printf("-- %s ** %s", curfield->namestring, field->stringval);
+      dbugprinttok(var);
+      dbugprinttok(dot);
+      dbugprinttok(field);
+    }
+    return dot;
+ }
+}
+
+
+/* arrayref processes an array reference a[i]
+   subs is a list of subscript expressions.
+   tok and tokb are (now) unused tokens that are recycled. */
+TOKEN arrayref(TOKEN arr, TOKEN tok, TOKEN subs, TOKEN tokb) {
+  if (subs->link) {
+  //  SYMBOL arrsym = arr symentry
+  } else {
+    
+
+  }
+  
+  if (DEBUG & DB_ARRAYREF) {
+      printf("arrayref\n");
+      //printf("-- %d", arr->symentry->size);
+      dbugprinttok(arr);
+      dbugprinttok(subs);
+  }
+  
+}
+
+
 /* dolabel is the action for a label of the form   <number>: <statement>
    tok is a (now) unused token that is recycled. */
 TOKEN dolabel(TOKEN labeltok, TOKEN tok, TOKEN statement) {
@@ -782,6 +857,21 @@ TOKEN dogoto(TOKEN tok, TOKEN labeltok) {
     }
 
     return tok;
+}
+
+
+/* dopoint handles a ^ operator.
+   tok is a (now) unused token that is recycled. */
+TOKEN dopoint(TOKEN var, TOKEN tok) {
+  tok->symentry = var->symentry->datatype->datatype;
+  tok->operands = var;
+
+  if (DEBUG & DB_DOPOINT) {
+    printf("dopoint\n");
+    dbugprinttok(tok);
+  }
+
+  return tok;
 }
 
 /* install variables in symbol table */
@@ -885,15 +975,15 @@ TOKEN instarray(TOKEN bounds, TOKEN typetok) {
     typetok = instarray(bounds->link, typetok);
 
     SYMBOL subrange = bounds->symtype;
+    SYMBOL typesym = typetok->symtype;
     SYMBOL arraysym = symalloc();
 
     arraysym->kind = ARRAYSYM;
-    arraysym->datatype = typetok->symtype;
+    arraysym->datatype = typesym;
     arraysym->lowbound = subrange->lowbound;
     arraysym->highbound = subrange->highbound;
-    arraysym->size = (arraysym->lowbound + arraysym->highbound - 1) * (typetok->symtype->size);
+    arraysym->size = (arraysym->lowbound + arraysym->highbound - 1) * (typesym->size);
     typetok->symtype = arraysym;
-
     if (DEBUG & DB_INSTARRAY) {
         printf("install array\n");
         dbugprinttok(typetok);
@@ -903,17 +993,16 @@ TOKEN instarray(TOKEN bounds, TOKEN typetok) {
 
 
   } else {
+
     SYMBOL subrange = bounds->symtype;
     SYMBOL typesym = typetok->symtype;
-
     SYMBOL arraysym = symalloc();
     arraysym->kind = ARRAYSYM;
     arraysym->datatype = typesym;
     arraysym->lowbound = subrange->lowbound;
     arraysym->highbound = subrange->highbound;
-    arraysym->size = (arraysym->lowbound + arraysym->highbound - 1) * (typesym->size);
+    arraysym->size = (arraysym->highbound - arraysym->lowbound +  1) * (typesym->size);
     typetok->symtype = arraysym;
-
     if (DEBUG & DB_INSTARRAY) {
       printf("install array base\n");
       dbugprinttok(typetok);
@@ -995,6 +1084,7 @@ TOKEN instpoint(TOKEN tok, TOKEN typename) {
   pointsym->datatype = typesym;
   pointsym->kind = POINTERSYM;
   pointsym->size = basicsizes[POINTER];
+  pointsym->basicdt = POINTER;
 
   tok->symtype = pointsym;
 
