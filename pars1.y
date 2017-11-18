@@ -228,40 +228,38 @@ TOKEN parseresult;
   */
 
 #define DEBUG           31             /* set bits here for debugging, 0 = off  */
-#define DB_CONS         1             /* bit to trace cons */
-#define DB_BINOP        1             /* bit to trace binop */
-#define DB_MAKEIF       1             /* bit to trace makeif */
-#define DB_MAKEPROGN    1             /* bit to trace makeprogn */
-#define DB_PARSERES     1             /* bit to trace parseresult */
-#define DB_MAKEPROGRAM  1
-#define DB_MAKEINTC     1
-#define DB_MAKELABEL    1
-#define DB_MAKEOP       1
-#define DB_MAKECOPY     1
-#define DB_MAKEGOTO     1
-#define DB_MAKEFOR      1
-#define DB_MAKEWHILE    1
-#define DB_MAKEFUNCALL  1
-#define DB_UNOP         1
+#define DB_CONS         0             /* bit to trace cons */
+#define DB_BINOP        0             /* bit to trace binop */
+#define DB_MAKEIF       0             /* bit to trace makeif */
+#define DB_MAKEPROGN    0             /* bit to trace makeprogn */
+#define DB_PARSERES     0             /* bit to trace parseresult */
+#define DB_MAKEPROGRAM  0
+#define DB_MAKEINTC     0
+#define DB_MAKELABEL    0
+#define DB_MAKEOP       0
+#define DB_MAKECOPY     0
+#define DB_MAKEGOTO     0
+#define DB_MAKEFOR      0
+#define DB_MAKEWHILE    0
+#define DB_MAKEFUNCALL  0
+#define DB_UNOP         0
 #define DB_FINDID       1  
-#define DB_INSTCONST    1  
-#define DB_INSTLABEL    1   
-#define DB_FINDLABEL    1 
-#define DB_FINDTYPE     1   
-#define DB_MAKEREPEAT   1
-#define DB_MAKESUB      1
-#define DB_DOLABEL      1
-#define DB_DOGOTO       1
-#define DB_INSTTYPE     1
-#define DB_INSTENUM     1
-#define DB_INSTDOTDOT   1
-#define DB_INSTARRAY    1
-#define DB_INSTFIELD    1
-#define DB_NCONC        1
-#define DB_INSTREC      1
-#define DB_INSTPOINT    1
-
- 
+#define DB_INSTCONST    0  
+#define DB_INSTLABEL    0   
+#define DB_FINDLABEL    0 
+#define DB_FINDTYPE     0   
+#define DB_MAKEREPEAT   0
+#define DB_MAKESUB      0
+#define DB_DOLABEL      0
+#define DB_DOGOTO       0
+#define DB_INSTTYPE     0
+#define DB_INSTENUM     0
+#define DB_INSTDOTDOT   0
+#define DB_INSTARRAY    0
+#define DB_INSTFIELD    0
+#define DB_NCONC        0
+#define DB_INSTREC      0
+#define DB_INSTPOINT    0
 
  int labelnumber = 0;  /* sequential counter for internal label numbers */
  int labeltable[50];
@@ -329,6 +327,9 @@ TOKEN binop(TOKEN op, TOKEN lhs, TOKEN rhs)        /* reduce binary operator */
     lhs->link = rhs;             /* link second operand to first    */
     rhs->link = NULL;            /* terminate operand list          */
 
+    if (rhs->whichval == (NIL - RESERVED_BIAS)) {
+      rhs = makeintc(0);
+    }
     if (isReal(lhs) && isReal(rhs)) {
       op->datatype = REAL;     
       printf("both real");
@@ -545,6 +546,10 @@ TOKEN makewhile(TOKEN tok, TOKEN expr, TOKEN tokb, TOKEN statement) {
   statement->link = gototok;
   TOKEN body = makeprogn(tokb, statement);
 
+  if (expr->operands->link && expr->operands->link->whichval == (NIL - RESERVED_BIAS)){
+    expr->operands->link = makeintc(0);
+  }
+
   TOKEN ifs = talloc();
   ifs = makeif(ifs, expr, body, NULL);
   label->link = ifs;
@@ -560,10 +565,26 @@ TOKEN makewhile(TOKEN tok, TOKEN expr, TOKEN tokb, TOKEN statement) {
 /* makefuncall makes a FUNCALL operator and links it to the fn and args.
    tok is a (now) unused token that is recycled. */
 TOKEN makefuncall(TOKEN tok, TOKEN fn, TOKEN args) {
-  tok->tokentype = OPERATOR;
-  tok->whichval = FUNCALLOP;
-  tok->operands = fn;
-  fn->link=args;
+  if (strcmp(fn->stringval, "new") == 0) {
+    tok = makeop(ASSIGNOP);
+    tok->operands = args;
+
+    SYMBOL typsym = args->symtype;
+    typsym = typsym->datatype;
+
+    TOKEN funcal = talloc();
+    funcal->tokentype = OPERATOR;
+    funcal->whichval = FUNCALLOP;
+    funcal->operands = fn;
+    fn->link = makeintc(typsym->size);
+    args->link = funcal;
+
+  } else {
+    tok->tokentype = OPERATOR;
+    tok->whichval = FUNCALLOP;
+    tok->operands = fn;
+    fn->link=args;
+  }
   if (DEBUG && DB_MAKEFUNCALL) {
          printf("makefuncall\n");
          dbugprinttok(tok);
@@ -838,7 +859,6 @@ TOKEN instenum(TOKEN idlist) {
   TOKEN tok = makesubrange(idlist, 0, count - 1);
   if (DEBUG & DB_INSTENUM) {
     printf("install enum\n");
-    printf("tok-symtpe %d\n", tok->symtype);
     dbugprinttok(idlist);
   }
 
@@ -914,7 +934,7 @@ TOKEN instfields(TOKEN idlist, TOKEN typetok) {
   SYMBOL typesym = typetok->symtype;
   TOKEN temp = idlist;
   while(temp) {
-    temp->symtype = typesym;     //ASK PROF
+    temp->symtype = typesym;     
     temp = temp->link;
   }
 
@@ -938,7 +958,6 @@ TOKEN instrec(TOKEN rectok, TOKEN argstok) {
 
   SYMBOL prev = NULL;
   while (argstok) {
-    printf("looking at field %s\n", argstok->stringval);
     align = alignsize(argstok->symtype);
     SYMBOL recfield = makesym(argstok->stringval);
     recfield->datatype = argstok->symtype;
