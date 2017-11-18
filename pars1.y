@@ -117,7 +117,7 @@ TOKEN parseresult;
   s_list     :  statement SEMICOLON s_list      { $$ = cons($1, $3); }
              |  statement
              ;
-  fields     :  idlist COLON type             { instfields($1, $3); }
+  fields     :  idlist COLON type             { $$ = instfields($1, $3); }
              ;
   field_list :  fields SEMICOLON field_list   { $$ = nconc($1, $3); }
              |  fields
@@ -142,9 +142,9 @@ TOKEN parseresult;
   vargroup   :  idlist COLON type { instvars($1, $3); }
              ;
   type       :  simpletype
-             |  ARRAY LBRACKET stype_list RBRACKET OF type   { instarray($3, $6); }
-             |  RECORD field_list END                          { instrec($1, $2); }
-             |  POINT IDENTIFIER                              { instpoint($1, $2); }
+             |  ARRAY LBRACKET stype_list RBRACKET OF type   { $$ = instarray($3, $6); }
+             |  RECORD field_list END                          { $$ = instrec($1, $2); }
+             |  POINT IDENTIFIER                              { $$ = instpoint($1, $2); }
              ;
   stype_list :  simpletype COMMA stype_list  { $$ = cons($1, $3); }
              |  simpletype                { $$ = cons($1, NULL); }
@@ -898,7 +898,7 @@ TOKEN instarray(TOKEN bounds, TOKEN typetok) {
     typetok->symtype = arraysym;
 
     if (DEBUG & DB_INSTARRAY) {
-      printf("install array\n");
+      printf("install array base\n");
       dbugprinttok(typetok);
     }
 
