@@ -150,8 +150,8 @@ TOKEN parseresult;
              |  simpletype                { $$ = cons($1, NULL); }
              ;
   simpletype :  IDENTIFIER   { $$ = findtype($1); }
-             |  LPAREN idlist RPAREN         { instenum($2); }
-             |  constant DOTDOT constant     { instdotdot($1, $2, $3); }
+             |  LPAREN idlist RPAREN         { $$ = instenum($2); }
+             |  constant DOTDOT constant     { $$ = instdotdot($1, $2, $3); }
              ;
   block      :  BEGINBEGIN statement endpart   { $$ = makeprogn($1,cons($2, $3)); }  
              ;
@@ -333,7 +333,6 @@ TOKEN binop(TOKEN op, TOKEN lhs, TOKEN rhs)        /* reduce binary operator */
       op->datatype = REAL;     
       printf("both real");
     } else if (isReal(lhs) && isInt(rhs)) {
-      printf("hit");
       op->datatype = REAL;
       TOKEN ftok = makefloat(rhs);
       lhs->link = ftok;
@@ -613,7 +612,7 @@ TOKEN makesubrange(TOKEN tok, int low, int high) {
   tok->symtype = subrange;
 
   if (DEBUG & DB_MAKESUB) {
-    printf("making subrange");
+    printf("making subrange\n");
     dbugprinttok(tok);
   }
 
@@ -717,10 +716,9 @@ TOKEN findid(TOKEN tok) { /* the ID token */
 
 TOKEN findtype(TOKEN tok) {
     SYMBOL sym = searchst(tok->stringval);
-//    if (sym->kind == TYPESYM) {
-//      printf("hit");
-//      sym = sym->datatype;
-//   }
+    if (sym->kind == TYPESYM) {
+      sym = sym->datatype;
+   }
     tok->symtype = sym;
     if (DEBUG & DB_FINDTYPE) {
       printf("finding type\n");
@@ -837,12 +835,14 @@ TOKEN instenum(TOKEN idlist) {
     list = list->link;
   }
 
+  TOKEN tok = makesubrange(idlist, 0, count - 1);
   if (DEBUG & DB_INSTENUM) {
     printf("install enum\n");
-    dbugprinttok(list);
+    printf("tok-symtpe %d\n", tok->symtype);
+    dbugprinttok(idlist);
   }
 
-  return makesubrange(idlist, 0, count - 1);
+  return tok;
 }
 
 /* instdotdot installs a .. subrange in the symbol table.
@@ -938,6 +938,7 @@ TOKEN instrec(TOKEN rectok, TOKEN argstok) {
 
   SYMBOL prev = NULL;
   while (argstok) {
+    printf("looking at field %s\n", argstok->stringval);
     align = alignsize(argstok->symtype);
     SYMBOL recfield = makesym(argstok->stringval);
     recfield->datatype = argstok->symtype;
@@ -996,7 +997,7 @@ void  insttype(TOKEN typename, TOKEN typetok) {
   SYMBOL typesym = searchins(typename->stringval);
   typesym->kind = TYPESYM;
   typesym->datatype = typetok->symtype;
-//  typesym->size = typetok->symtype->size;
+  typesym->size = typetok->symtype->size;
 
   if (DEBUG & DB_INSTTYPE) {
     printf("install type\n");
