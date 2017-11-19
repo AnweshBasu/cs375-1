@@ -814,16 +814,12 @@ TOKEN arrayref(TOKEN arr, TOKEN tok, TOKEN subs, TOKEN tokb) {
     TOKEN plusop = makeop(PLUSOP);
     plusop->operands = nsize;
 
-    printf("hit");
     TOKEN subarref = makearef(arr, plusop, tokb);
-    dbugprinttok(subarref);
-    if (arr->symtype) {
-      printf("jj");
-    }
-    printf("name---- %s",arr->symtype->namestring);
-    subarref->symentry = arr->symtype->datatype;
-    subs = subs->link;
-    return arrayref(subarref, tok, subs, tokb);
+    
+    subarref->symtype = arr->symentry->datatype->datatype;
+    subarref->symentry = arr->symentry->datatype->datatype;
+
+    return arrayref(subarref, tok, subs->link, tokb);
 
 
   } else {
