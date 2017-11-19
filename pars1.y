@@ -52,6 +52,7 @@
 
 #include <stdio.h>
 #include <ctype.h>
+#include <string.h>
 #include "token.h"
 #include "lexan.h"
 #include "symtab.h"
@@ -243,7 +244,7 @@ TOKEN parseresult;
 #define DB_MAKEWHILE    0
 #define DB_MAKEFUNCALL  0
 #define DB_UNOP         0
-#define DB_FINDID       1  
+#define DB_FINDID       0  
 #define DB_INSTCONST    0  
 #define DB_INSTLABEL    0   
 #define DB_FINDLABEL    0 
@@ -255,7 +256,7 @@ TOKEN parseresult;
 #define DB_MAKEAREF     1
 #define DB_DOLABEL      0
 #define DB_DOGOTO       0
-#define DB_DOPOINT      1
+#define DB_DOPOINT      0
 #define DB_INSTTYPE     0
 #define DB_INSTENUM     0
 #define DB_INSTDOTDOT   0
@@ -495,13 +496,13 @@ TOKEN makearef(TOKEN var, TOKEN off, TOKEN tok){
   TOKEN areftok = makeop(AREFOP);
   var->link = off;
   areftok->operands = var;
-
-  //SYMBOL symtok = symalloc();
-  //areftok->symtype=
+  areftok->symentry = var->symentry;   
 
   if (DEBUG && DB_MAKEAREF) {
       printf("makearef\n");
+      printf("symentry: %s", var->symentry->namestring);
       dbugprinttok(areftok);
+      dbugprinttok(var);
   }
 
   return areftok;
@@ -767,35 +768,30 @@ TOKEN findtype(TOKEN tok) {
    dot is a (now) unused token that is recycled. */
 TOKEN reducedot(TOKEN var, TOKEN dot, TOKEN field) {
 
-  if (var->whichval == AREFOP) {
-
-
-
-  } else {
-    SYMBOL recsym = var->symentry;
-    SYMBOL curfield = recsym->datatype->datatype;
-    int offset = 0;
-
-    while(curfield) {
-      if (strcmp(curfield->namestring, field->stringval) == 0) {
-        offset = curfield->offset;
-        break;
-      } else {
-        curfield = curfield->link;
-      }
+  SYMBOL recsym = var->symentry;
+  SYMBOL curfield = recsym->datatype->datatype;
+  int offset = 0;
+  while(curfield) {
+    if (strcmp(curfield->namestring, field->stringval) == 0) {
+      offset = curfield->offset;
+      var->symentry = curfield;
+      break;
+    } else {
+      curfield = curfield->link;
     }
+  }
 
-    dot = makearef(var, offset, dot);
+  dot = makearef(var, makeintc(offset), dot);
 
-    if (DEBUG & DB_REDUCEDOT) {
-      printf("reducedot\n");
-      //printf("-- %s ** %s", curfield->namestring, field->stringval);
-      dbugprinttok(var);
-      dbugprinttok(dot);
-      dbugprinttok(field);
-    }
-    return dot;
- }
+  if (DEBUG & DB_REDUCEDOT) {
+    printf("reducedot\n");
+    //printf("-- %s ** %s", curfield->namestring, field->stringval);
+    dbugprinttok(var);
+    dbugprinttok(dot);
+    dbugprinttok(field);
+  }
+  return dot;
+ 
 }
 
 
@@ -804,18 +800,58 @@ TOKEN reducedot(TOKEN var, TOKEN dot, TOKEN field) {
    tok and tokb are (now) unused tokens that are recycled. */
 TOKEN arrayref(TOKEN arr, TOKEN tok, TOKEN subs, TOKEN tokb) {
   if (subs->link) {
-  //  SYMBOL arrsym = arr symentry
-  } else {
-    
+    TOKEN timesop = makeop(TIMESOP);
+    int low = arr->symtype->lowbound;
+    int high = arr->symtype->highbound;
+    int size = (arr->symtype->size / (high + low - 1));
 
+    TOKEN elesize = makeintc(size);
+    elesize->link = subs;
+    timesop->operands = elesize;
+
+    TOKEN nsize = makeintc(-1 * size);
+    nsize->link = timesop;
+    TOKEN plusop = makeop(PLUSOP);
+    plusop->operands = nsize;
+
+    printf("hit");
+    TOKEN subarref = makearef(arr, plusop, tokb);
+    dbugprinttok(subarref);
+    if (arr->symtype) {
+      printf("jj");
+    }
+    printf("name---- %s",arr->symtype->namestring);
+    subarref->symentry = arr->symtype->datatype;
+    subs = subs->link;
+    return arrayref(subarref, tok, subs, tokb);
+
+
+  } else {
+    TOKEN timesop = makeop(TIMESOP);
+    int low = arr->symtype->lowbound;
+    int high = arr->symtype->highbound;
+    int size = (arr->symtype->size / (high + low - 1));
+
+    TOKEN elesize = makeintc(size);
+    elesize->link = subs;
+    timesop->operands = elesize;
+
+    TOKEN nsize = makeintc(-1 * size);
+    nsize->link = timesop;
+    TOKEN plusop = makeop(PLUSOP);
+    plusop->operands = nsize;
+
+
+    if (DEBUG & DB_ARRAYREF) {
+        printf("arrayref\n");
+        //printf("low : %d, high : %d, total size : %d, size of ele %d", low, high, arr->symtype->size, size);
+        dbugprinttok(arr);
+        dbugprinttok(subs);
+        dbugprinttok(plusop);
+    }
+    return makearef(arr, plusop, tokb);
   }
-  
-  if (DEBUG & DB_ARRAYREF) {
-      printf("arrayref\n");
-      //printf("-- %d", arr->symentry->size);
-      dbugprinttok(arr);
-      dbugprinttok(subs);
-  }
+
   
 }
 
