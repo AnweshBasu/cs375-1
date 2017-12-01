@@ -493,6 +493,15 @@ TOKEN makegoto(int num){
    off is be an integer constant token
    tok (if not NULL) is a (now) unused token that is recycled. */
 TOKEN makearef(TOKEN var, TOKEN off, TOKEN tok){
+  if (var->whichval == AREFOP) {
+    TOKEN plusop = makeop(PLUSOP);
+    TOKEN oldoff = var->operands->link;
+    oldoff->link = off;
+    plusop->operands = oldoff;
+    var->operands->link = plusop;
+    return var;
+  } 
+
   TOKEN areftok = makeop(AREFOP);
   var->link = off;
   areftok->operands = var;
@@ -803,44 +812,50 @@ TOKEN arrayref(TOKEN arr, TOKEN tok, TOKEN subs, TOKEN tokb) {
     TOKEN timesop = makeop(TIMESOP);
     int low = arr->symtype->lowbound;
     int high = arr->symtype->highbound;
-    int size = (arr->symtype->size / (high + low - 1));
+    int size = (arr->symtype->size / (high - low + 1));
 
+    TOKEN s = copytok(subs);
+    s->link = NULL;
     TOKEN elesize = makeintc(size);
-    elesize->link = subs;
+    elesize->link = s;
     timesop->operands = elesize;
 
-    TOKEN nsize = makeintc(-1 * size);
+    TOKEN nsize = makeintc(-1 * size * low);
     nsize->link = timesop;
     TOKEN plusop = makeop(PLUSOP);
     plusop->operands = nsize;
 
     TOKEN subarref = makearef(arr, plusop, tokb);
     
-    subarref->symtype = arr->symentry->datatype->datatype;
-    subarref->symentry = arr->symentry->datatype->datatype;
-
+    subarref->symtype = arr->symtype->datatype;
+    if (DEBUG & DB_ARRAYREF) {
+        printf("arrayref\n");
+        printf("multiple : %d, %d, %d, %d\n", size, low, size * low, size * low * -1);
+        printf("low : %d, high : %d, total size : %d, size of ele %d", low, high, arr->symtype->size, size);
+        dbugprinttok(arr);
+        dbugprinttok(subs);
+       // dbugprinttok(plusop);
+    }
     return arrayref(subarref, tok, subs->link, tokb);
-
-
   } else {
     TOKEN timesop = makeop(TIMESOP);
     int low = arr->symtype->lowbound;
     int high = arr->symtype->highbound;
-    int size = (arr->symtype->size / (high + low - 1));
+    int size = (arr->symtype->size / (high - low + 1));
 
     TOKEN elesize = makeintc(size);
     elesize->link = subs;
     timesop->operands = elesize;
 
-    TOKEN nsize = makeintc(-1 * size);
+    TOKEN nsize = makeintc(-1 * size * low);
     nsize->link = timesop;
     TOKEN plusop = makeop(PLUSOP);
     plusop->operands = nsize;
 
 
     if (DEBUG & DB_ARRAYREF) {
-        printf("arrayref\n");
-        //printf("low : %d, high : %d, total size : %d, size of ele %d", low, high, arr->symtype->size, size);
+        printf("arrayref base\n");
+        printf("low : %d, high : %d, total size : %d, size of ele %d", low, high, arr->symtype->size, size);
         dbugprinttok(arr);
         dbugprinttok(subs);
         dbugprinttok(plusop);
