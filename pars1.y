@@ -230,7 +230,7 @@ TOKEN parseresult;
 
 #define DEBUG           31             /* set bits here for debugging, 0 = off  */
 #define DB_CONS         0             /* bit to trace cons */
-#define DB_BINOP        0             /* bit to trace binop */
+#define DB_BINOP        1             /* bit to trace binop */
 #define DB_MAKEIF       0             /* bit to trace makeif */
 #define DB_MAKEPROGN    0             /* bit to trace makeprogn */
 #define DB_PARSERES     0             /* bit to trace parseresult */
@@ -243,17 +243,17 @@ TOKEN parseresult;
 #define DB_MAKEFOR      0
 #define DB_MAKEWHILE    0
 #define DB_MAKEFUNCALL  0
+#define DB_MAKEREPEAT   0
+#define DB_MAKESUB      0
+#define DB_MAKEAREF     1
 #define DB_UNOP         0
 #define DB_FINDID       0  
 #define DB_INSTCONST    0  
 #define DB_INSTLABEL    0   
 #define DB_FINDLABEL    0 
 #define DB_FINDTYPE     0 
-#define DB_REDUCEDOT    1
-#define DB_ARRAYREF     1
-#define DB_MAKEREPEAT   0
-#define DB_MAKESUB      0
-#define DB_MAKEAREF     1
+#define DB_REDUCEDOT    0
+#define DB_ARRAYREF     0
 #define DB_DOLABEL      0
 #define DB_DOGOTO       0
 #define DB_DOPOINT      0
@@ -336,8 +336,14 @@ TOKEN binop(TOKEN op, TOKEN lhs, TOKEN rhs)        /* reduce binary operator */
     op->operands = lhs;          /* link operands to operator       */
     lhs->link = rhs;             /* link second operand to first    */
     rhs->link = NULL;            /* terminate operand list          */
-
-
+    int flag = 1;
+   //if (DEBUG & DB_BINOP)
+   //    { printf("binop 1\n"); 
+   //      printf(lhs->datatype == REAL? "real" : "integer");
+   //      dbugprinttok(op);
+   //     dbugprinttok(lhs);
+   //    dbugprinttok(rhs); 
+   // };
 
     if (isReal(lhs) && isReal(rhs)) {
       op->datatype = REAL;     
@@ -345,21 +351,24 @@ TOKEN binop(TOKEN op, TOKEN lhs, TOKEN rhs)        /* reduce binary operator */
       op->datatype = REAL;
       TOKEN ftok = makefloat(rhs);
       lhs->link = ftok;
+      flag = 2;
     } else if (isInt(lhs) && isReal(rhs)) {
       if (op->whichval == ASSIGNOP) {
         op->datatype = INTEGER;
         TOKEN fixtok = makefix(rhs);
         lhs->link = fixtok;
+        flag = 3;
       } else {
         op->datatype = REAL;
         TOKEN ftok = makefloat(lhs);
         ftok->link = rhs;
+        flag = 4;
       }
     } 
 
 
     if (DEBUG & DB_BINOP)
-       { printf("binop\n"); 
+       { printf("binop case: %d\n", flag); 
          dbugprinttok(op);
          dbugprinttok(lhs);
          dbugprinttok(rhs); 
@@ -499,13 +508,23 @@ TOKEN makearef(TOKEN var, TOKEN off, TOKEN tok){
     oldoff->link = off;
     plusop->operands = oldoff;
     var->operands->link = plusop;
+   // SYMBOL sym = var->symentry;
+
     return var;
+
+    if (DEBUG && DB_MAKEAREF) {
+        printf("makearef couple\n");
+        printf("symentry: %s", var->symentry->namestring);
+        dbugprinttok(var);
+    }
+
   } 
 
   TOKEN areftok = makeop(AREFOP);
   var->link = off;
   areftok->operands = var;
-  areftok->symentry = var->symentry;   
+  areftok->symentry = var->symentry; 
+  areftok->datatype = var->symentry->datatype;  
 
   if (DEBUG && DB_MAKEAREF) {
       printf("makearef\n");
@@ -603,6 +622,17 @@ TOKEN makefuncall(TOKEN tok, TOKEN fn, TOKEN args) {
     funcal->operands = fn;
     fn->link = makeintc(typsym->size);
     args->link = funcal;
+
+  } else if (strcmp(fn->stringval, "writeln") == 0) {
+    if (args->datatype == REAL) {
+        strcpy(fn->stringval, "writelnf");
+    } else {
+        strcpy(fn->stringval, "writelni");
+    }
+    tok->tokentype = OPERATOR;
+    tok->whichval = FUNCALLOP;
+    tok->operands = fn;
+    fn->link=args; 
 
   } else {
     tok->tokentype = OPERATOR;
