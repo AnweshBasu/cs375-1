@@ -59,11 +59,6 @@ program : PROGRAM IDENTIFIER LPAREN id_list RPAREN SEMICOLON lblock DOT
 
 numlist : NUMBER ( COMMA NUMBER )*
 
-
-
-
-
-
 lblock : LABEL numlist SEMICOLON cblock
        | cblock
 
