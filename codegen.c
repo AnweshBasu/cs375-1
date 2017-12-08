@@ -37,7 +37,8 @@ void genc(TOKEN code);
 
 int nextlabel;    /* Next available label number */
 int stkframesize;   /* total stack frame size */
-int registertable[REGISTERS];
+int registertable[REGISTERS]; /* Register Table */
+
 /* Top-level entry for code generator.
    pcode    = pointer to code:  (program foo (output) (progn ...))
    varsize  = size of local storage in bytes
@@ -88,7 +89,6 @@ int getreg(int kind)
     return chosen_register;
   }
 
-/* Trivial version */
 /* Generate code for arithmetic expression, return a register number */
 int genarith(TOKEN code)
   { 
@@ -118,7 +118,8 @@ int genarith(TOKEN code)
               	        }
                         break;
 
-      case IDENTIFIERTOK: sym =  code->symentry;
+      case IDENTIFIERTOK: //If not a function
+                          sym =  code->symentry;
                           offs = sym->offset - stkframesize;
                           switch (code->datatype) {
                             case INTEGER: reg = getreg(1);
@@ -127,16 +128,24 @@ int genarith(TOKEN code)
                             case REAL:    reg = getreg(2);
                                           asmld(MOVSD, offs, reg, code->stringval); 
                                           break;
+                            case POINTER: break; //TODO (MOVQ)
                           }
                           break;
 
       case OPERATOR:  lhs = code->operands;
                       rhs = lhs->link;
-                      int reg1 = genarith(lhs);
-                      int reg2 = genarith(rhs);
-                      switch (code->whichval) {
-                        case PLUS: asmrr(ADDL, reg1, reg2); break;
-                        case MINUS: asmrr(SUBL, reg1, reg2); break; /* fill more */
+                      int reg1 = genarith(lhs);     //HANDLE POINT, DOT AND AREF HERE?
+                      int reg2 = genarith(rhs);     //ASK PROF IF THIS IS THE CORRECT WAY TO DO THIS
+                      switch (code->whichval) {     //ASK PROF how to decide if ADDL or ADDSD
+                        case PLUSOP: asmrr(ADDL, reg1, reg2); break;
+                        case MINUSOP: asmrr(SUBL, reg1, reg2); break; /* fill more */
+                        case TIMESOP: break;
+                        case DIVIDEOP: break;
+
+
+                        case EQOP: case NEOP: case LTOP: case LEOP: case GEOP: case GTOP: asmrr(CMPL, reg1, reg2); break;
+                        case AREFOP: break;
+
                       }
                       reg = reg2;
                       unused(reg1);
@@ -155,7 +164,7 @@ void genc(TOKEN code)
      clearreg();
 
      if (DEBUGGEN) {
-      printf("genc\n");
+      printf("genc\n");3
 	    dbugprinttok(code);
      };
 
@@ -173,6 +182,7 @@ void genc(TOKEN code)
                 	   break;
 
                     // Modify this to shift this lower trivial case into genarith
+                    //ASK PROF ABOUT THIS
       case ASSIGNOP: lhs = code->operands;      /* Trivial version: handles I := e */
                 	   rhs = lhs->link;
                 	   reg = genarith(rhs);              /* generate rhs into a register */
@@ -191,11 +201,21 @@ void genc(TOKEN code)
       case LABELOP: asmlabel(code->operands->intval);
                     break;
 
-      case IFOP: break;
+      case IFOP:  tok = code->operands;
+                  reg = genarith(tok);        //ASK PROF PAGE 236 237
+
+                  break;
 
       case FUNCALLOP: break;
 	   };
   }
+
+
+/* Generate code for a function call */
+int genfun(TOKEN code);
+
+/* find the correct MOV op depending on type of code */
+int moveop(TOKEN code);
 
   void clearreg() {
     for (int i = 0; i < REGISTERS; i ++) {
