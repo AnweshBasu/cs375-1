@@ -124,9 +124,12 @@ int genarith(TOKEN code)
                                           break;
               	        }
                         break;
+
       case STRINGTOK: num = nextlabel++;
                       makeblit(code->stringval, num);
-
+                      reg = getreg(1);
+                      asmlitarg(num, reg);
+                      break;
 
       case IDENTIFIERTOK: //If not a function
                           sym =  code->symentry;
@@ -141,6 +144,9 @@ int genarith(TOKEN code)
                             case POINTER: break; //TODO (MOVQ)
                           }
                           break;
+
+                          //INCLUDE CHECK TO SEE IF RHS IS A FUNCALL, AND IF SO, SAVE ALL VOLATILE REGISTER
+                          //INCLUDE CHECK TO SEE IF ARGUMENT IS A FUNCALL
 
       case OPERATOR:  if (code->whichval == AREFOP) {
                         //reg = genaref(code);
@@ -239,12 +245,7 @@ void genc(TOKEN code)
                   asmlabel(end);
                   break;
 
-      case FUNCALLOP: tok = code->operands; //FUNCTION
-                      lhs = tok->link;  //FIRST ARGUMENT
-                      while (lhs) {
-                        genarith(lhs);
-                        lhs = lhs->link;
-                      }
+      case FUNCALLOP: genfun(code);
                       break;
 	   };
   }
@@ -257,15 +258,19 @@ int genaref(TOKEN code, int storereg) {
   return -1;
 }
 
-/* Set up a literal address argument for subroutine call, e.g. writeln('*') */
-/* Example:  asmlitarg(8, EDI);   addr of literal 8 --> %edi */
-void asmlitarg(int labeln, int dstreg) {
-
-}
-
-
 /* Generate code for a function call */
-int genfun(TOKEN code);
+int genfun(TOKEN code) {
+    TOKEN tok = code->operands; //FUNCTION
+    TOKEN lhs = tok->link;  //FIRST ARGUMENT
+    int reg;
+    while (lhs) {
+      reg = genarith(lhs);        //CHANGE THIS, RETURN EAX, XMM0 or RAX
+      lhs = lhs->link;
+    }
+
+    asmcall(tok->stringval);  
+    return reg;
+}
 
 /* find the correct MOV op depending on type of code */
 int moveop(TOKEN code);

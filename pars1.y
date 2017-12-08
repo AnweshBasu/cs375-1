@@ -208,7 +208,7 @@ TOKEN parseresult;
              ;
   expr_list  :  expr COMMA expr_list           { $$ = cons($1, $3); }
              |  expr                        { $$ = cons($1, NULL); }
-             ;
+             ;m
   term       :  term times_op factor              { $$ = binop($2, $1, $3); }
              |  factor
              ;

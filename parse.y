@@ -230,7 +230,7 @@ TOKEN parseresult;
 
 #define DEBUG           31             /* set bits here for debugging, 0 = off  */
 #define DB_CONS         0             /* bit to trace cons */
-#define DB_BINOP        1             /* bit to trace binop */
+#define DB_BINOP        0             /* bit to trace binop */
 #define DB_MAKEIF       0             /* bit to trace makeif */
 #define DB_MAKEPROGN    0             /* bit to trace makeprogn */
 #define DB_PARSERES     0             /* bit to trace parseresult */
@@ -245,7 +245,7 @@ TOKEN parseresult;
 #define DB_MAKEFUNCALL  0
 #define DB_MAKEREPEAT   0
 #define DB_MAKESUB      0
-#define DB_MAKEAREF     1
+#define DB_MAKEAREF     0
 #define DB_UNOP         0
 #define DB_FINDID       0  
 #define DB_INSTCONST    0  
@@ -626,6 +626,8 @@ TOKEN makefuncall(TOKEN tok, TOKEN fn, TOKEN args) {
   } else if (strcmp(fn->stringval, "writeln") == 0) {
     if (args->datatype == REAL) {
         strcpy(fn->stringval, "writelnf");
+    } else if (args->tokentype == STRINGTOK) {
+        strcpy(fn->stringval, "writeln");
     } else {
         strcpy(fn->stringval, "writelni");
     }
