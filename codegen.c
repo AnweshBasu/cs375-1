@@ -32,11 +32,12 @@
 void genc(TOKEN code);
 
 /* Set DEBUGGEN to 1 for debug printouts of code generation */
-#define DEBUGGEN 0
+#define DEBUGGEN 1
+#define REGISTERS 32
 
 int nextlabel;    /* Next available label number */
 int stkframesize;   /* total stack frame size */
-
+int registertable[REGISTERS];
 /* Top-level entry for code generator.
    pcode    = pointer to code:  (program foo (output) (progn ...))
    varsize  = size of local storage in bytes
@@ -58,36 +59,88 @@ void gencode(TOKEN pcode, int varsize, int maxlabel)
      asmexit(name->stringval);
   }
 
-/* Trivial version: always returns RBASE + 0 */
-/* Get a register.   */
-/* Need a type parameter or two versions for INTEGER or REAL */
 int getreg(int kind)
   {
-    /*     ***** fix this *****   */
-     return RBASE;
+    int chosen_register;
+
+    if (kind == 1) {  
+      for (int i = RBASE; i <= RMAX; i ++) {
+        if (registertable[i] == 0) {
+          used(i);
+          chosen_register =  i; 
+          break;
+        }
+      }
+    } else {
+      for (int i = FBASE; i <= FMAX; i ++) {
+        if (registertable[i] == 0) {
+          used(i);
+          chosen_register = i;
+          break;
+        }
+      }
+    }
+
+    if (DEBUGGEN) {
+      printf("getreg\n");
+      printf("chosen %d\n", chosen_register);
+    }
+    return chosen_register;
   }
 
 /* Trivial version */
 /* Generate code for arithmetic expression, return a register number */
 int genarith(TOKEN code)
   { 
-    int num, reg;
+    int num, reg, offs;
+    SYMBOL sym;
+    float value;
+    TOKEN lhs, rhs;
+
     if (DEBUGGEN) { 
       printf("genarith\n");
 	    dbugprinttok(code);
     };
+
     switch ( code->tokentype ) { 
-      case NUMBERTOK:    switch (code->datatype) { 
+      case NUMBERTOK:   switch (code->datatype) { 
                             case INTEGER: num = code->intval;
-                                          reg = getreg(WORD);
+                                          reg = getreg(1);
                                      		  if ( num >= MINIMMEDIATE && num <= MAXIMMEDIATE )
                                    		    asmimmed(MOVL, num, reg);
                                      		  break;
-    	                      case REAL:    break;
-              	         }
-    	                   break;
-      case IDENTIFIERTOK:break;
-      case OPERATOR:     break;
+    	                      case REAL:    value = code->realval;
+                                          reg = getreg(2);
+                                          int label = nextlabel ++;
+                                          makeflit(value, label);
+                                          asmldflit(MOVSD, label, reg);
+                                          break;
+              	        }
+                        break;
+
+      case IDENTIFIERTOK: sym =  code->symentry;
+                          offs = sym->offset - stkframesize;
+                          switch (code->datatype) {
+                            case INTEGER: reg = getreg(1);
+                                          asmld(MOVL, offs, reg, code->stringval);
+                                          break;
+                            case REAL:    reg = getreg(2);
+                                          asmld(MOVSD, offs, reg, code->stringval); 
+                                          break;
+                          }
+                          break;
+
+      case OPERATOR:  lhs = code->operands;
+                      rhs = lhs->link;
+                      int reg1 = genarith(lhs);
+                      int reg2 = genarith(rhs);
+                      switch (code->whichval) {
+                        case PLUS: asmrr(ADDL, reg1, reg2); break;
+                        case MINUS: asmrr(SUBL, reg1, reg2); break; /* fill more */
+                      }
+                      reg = reg2;
+                      unused(reg1);
+                      break;
     };
 
      return reg;
@@ -99,6 +152,7 @@ void genc(TOKEN code)
   {  TOKEN tok, lhs, rhs;
      int reg, offs;
      SYMBOL sym;
+     clearreg();
 
      if (DEBUGGEN) {
       printf("genc\n");
@@ -109,7 +163,7 @@ void genc(TOKEN code)
           printf("Bad code token");
       	  dbugprinttok(code);
       };
-      
+
      switch ( code->whichval ) {
       case PROGNOP:  tok = code->operands;
                 	   while ( tok != NULL ) {
@@ -118,6 +172,7 @@ void genc(TOKEN code)
                 	   }; 
                 	   break;
 
+                    // Modify this to shift this lower trivial case into genarith
       case ASSIGNOP: lhs = code->operands;      /* Trivial version: handles I := e */
                 	   rhs = lhs->link;
                 	   reg = genarith(rhs);              /* generate rhs into a register */
@@ -128,6 +183,30 @@ void genc(TOKEN code)
                                      break;
                                  /* ...  */
                      };
-                     break;
+                     break; 
+
+      case GOTOOP: asmjump(JMP, code->operands->intval);
+                   break;
+
+      case LABELOP: asmlabel(code->operands->intval);
+                    break;
+
+      case IFOP: break;
+
+      case FUNCALLOP: break;
 	   };
+  }
+
+  void clearreg() {
+    for (int i = 0; i < REGISTERS; i ++) {
+      unused(i);
+    }
+  }
+
+  void unused(int reg) {
+    registertable[reg] = 0;
+  }
+
+  void used(int reg){
+    registertable[reg] = 1; 
   }
