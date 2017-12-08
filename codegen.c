@@ -32,12 +32,18 @@
 void genc(TOKEN code);
 
 /* Set DEBUGGEN to 1 for debug printouts of code generation */
-#define DEBUGGEN 1
+#define DEBUGGEN 0
 #define REGISTERS 32
 
 int nextlabel;    /* Next available label number */
 int stkframesize;   /* total stack frame size */
 int registertable[REGISTERS]; /* Register Table */
+
+int op_to_inst_int[50];
+int op_to_inst_real[50];
+int op_to_inst_point[50];
+
+int ifc_to_jinst[50];
 
 /* Top-level entry for code generator.
    pcode    = pointer to code:  (program foo (output) (progn ...))
@@ -50,8 +56,9 @@ The generated code is printed out; use a text editor to extract it for
 your .s file.
          */
 
-void gencode(TOKEN pcode, int varsize, int maxlabel)
-  {  TOKEN name, code;
+void gencode(TOKEN pcode, int varsize, int maxlabel) {
+     initalisetables();
+     TOKEN name, code;
      name = pcode->operands;
      code = name->link->link;
      nextlabel = maxlabel + 1;
@@ -92,7 +99,7 @@ int getreg(int kind)
 /* Generate code for arithmetic expression, return a register number */
 int genarith(TOKEN code)
   { 
-    int num, reg, offs;
+    int num, reg, offs, reg1 = -1, reg2 = -1;
     SYMBOL sym;
     float value;
     TOKEN lhs, rhs;
@@ -101,7 +108,7 @@ int genarith(TOKEN code)
       printf("genarith\n");
 	    dbugprinttok(code);
     };
-
+    //Call genaref somewhere
     switch ( code->tokentype ) { 
       case NUMBERTOK:   switch (code->datatype) { 
                             case INTEGER: num = code->intval;
@@ -117,6 +124,9 @@ int genarith(TOKEN code)
                                           break;
               	        }
                         break;
+      case STRINGTOK: num = nextlabel++;
+                      makeblit(code->stringval, num);
+
 
       case IDENTIFIERTOK: //If not a function
                           sym =  code->symentry;
@@ -132,23 +142,38 @@ int genarith(TOKEN code)
                           }
                           break;
 
-      case OPERATOR:  lhs = code->operands;
-                      rhs = lhs->link;
-                      int reg1 = genarith(lhs);     //HANDLE POINT, DOT AND AREF HERE?
-                      int reg2 = genarith(rhs);     //ASK PROF IF THIS IS THE CORRECT WAY TO DO THIS
-                      switch (code->whichval) {     //ASK PROF how to decide if ADDL or ADDSD
-                        case PLUSOP: asmrr(ADDL, reg1, reg2); break;
-                        case MINUSOP: asmrr(SUBL, reg1, reg2); break; /* fill more */
-                        case TIMESOP: break;
-                        case DIVIDEOP: break;
-
-
-                        case EQOP: case NEOP: case LTOP: case LEOP: case GEOP: case GTOP: asmrr(CMPL, reg1, reg2); break;
-                        case AREFOP: break;
-
+      case OPERATOR:  if (code->whichval == AREFOP) {
+                        //reg = genaref(code);
+                      } else if (code->whichval == FLOATOP) {
+                          lhs = code->operands;
+                          reg1 = genarith(lhs);
+                          reg = getreg(2);
+                          asmfloat(reg1, reg);
+                          unused(reg1);
+                      } else if (code->whichval == FLOATOP) {
+                          lhs = code->operands;
+                          reg1 = genarith(lhs);
+                          reg = getreg(1);
+                          asmfloat(reg1, reg);
+                          unused(reg1);
+                      } else if (code->datatype == INTEGER) {
+                          lhs = code->operands;
+                          rhs = lhs->link;
+                          reg = genarith(lhs);     
+                          reg1 = genarith(rhs);     
+                          asmrr(op_to_inst_int[code->whichval], reg1, reg); break;
+                          unused(reg1);
+                      } else if (code->datatype == REAL) {
+                         lhs = code->operands;
+                          rhs = lhs->link;
+                          reg = genarith(lhs);     
+                          reg1 = genarith(rhs);     
+                          asmrr(op_to_inst_real[code->whichval], reg1, reg); break;
+                          unused(reg1);
+                      } else {
+                        printf("Dont know what to do");
+                        return -1;
                       }
-                      reg = reg2;
-                      unused(reg1);
                       break;
     };
 
@@ -164,7 +189,7 @@ void genc(TOKEN code)
      clearreg();
 
      if (DEBUGGEN) {
-      printf("genc\n");3
+      printf("genc\n");
 	    dbugprinttok(code);
      };
 
@@ -181,8 +206,6 @@ void genc(TOKEN code)
                 	   }; 
                 	   break;
 
-                    // Modify this to shift this lower trivial case into genarith
-                    //ASK PROF ABOUT THIS
       case ASSIGNOP: lhs = code->operands;      /* Trivial version: handles I := e */
                 	   rhs = lhs->link;
                 	   reg = genarith(rhs);              /* generate rhs into a register */
@@ -202,13 +225,43 @@ void genc(TOKEN code)
                     break;
 
       case IFOP:  tok = code->operands;
-                  reg = genarith(tok);        //ASK PROF PAGE 236 237
-
+                  reg = genarith(tok);        
+                  lhs = tok->link; //THEN PART
+                  rhs = lhs->link; //ELSE PART
+                  int curr = nextlabel++;
+                  asmjump(ifc_to_jinst[tok->whichval], curr);
+                  if (rhs) 
+                    genc(rhs);
+                  int end = nextlabel++;
+                  asmjump(JMP, end);
+                  asmlabel(curr);
+                  genc(lhs);
+                  asmlabel(end);
                   break;
 
-      case FUNCALLOP: break;
+      case FUNCALLOP: tok = code->operands; //FUNCTION
+                      lhs = tok->link;  //FIRST ARGUMENT
+                      while (lhs) {
+                        genarith(lhs);
+                        lhs = lhs->link;
+                      }
+                      break;
 	   };
   }
+
+/* Generate code for array references and pointers */
+/* In Pascal, a (^ ...) can only occur as first argument of an aref. */
+/* If storereg < 0, generates a load and returns register number;
+   else, generates a store from storereg. */
+int genaref(TOKEN code, int storereg) {
+  return -1;
+}
+
+/* Set up a literal address argument for subroutine call, e.g. writeln('*') */
+/* Example:  asmlitarg(8, EDI);   addr of literal 8 --> %edi */
+void asmlitarg(int labeln, int dstreg) {
+
+}
 
 
 /* Generate code for a function call */
@@ -229,4 +282,38 @@ int moveop(TOKEN code);
 
   void used(int reg){
     registertable[reg] = 1; 
+  }
+
+  void initalisetables() {
+    op_to_inst_int[PLUSOP] = ADDL;
+    op_to_inst_int[MINUSOP] = SUBL;
+    op_to_inst_int[TIMESOP] = IMULL;
+    op_to_inst_int[DIVIDEOP] = DIVL;
+    op_to_inst_int[ANDOP] = ANDL;
+    op_to_inst_int[OROP] = ORL;
+    op_to_inst_int[EQOP] = op_to_inst_int[LEOP] = op_to_inst_int[LTOP] = op_to_inst_int[GEOP] = op_to_inst_int[GTOP] = op_to_inst_int[NEOP] = CMPL;
+
+
+    op_to_inst_real[PLUSOP] = ADDSD;
+    op_to_inst_real[MINUSOP] = SUBSD;
+    op_to_inst_real[TIMESOP] = MULSD;
+    op_to_inst_real[DIVIDEOP] = DIVSD;
+    op_to_inst_real[NOTOP] = NEGSD;
+    op_to_inst_real[EQOP] = op_to_inst_real[LEOP] = op_to_inst_real[LTOP] = op_to_inst_real[GEOP] = op_to_inst_real[GTOP] = op_to_inst_real[NEOP] = CMPSD;
+
+
+    op_to_inst_point[PLUSOP] = ADDQ;
+    op_to_inst_point[MINUSOP] = SUBQ;
+    op_to_inst_point[TIMESOP] = IMULQ;
+    op_to_inst_point[ANDOP] = ANDQ;
+    op_to_inst_point[NOTOP] = NOTQ;
+    op_to_inst_point[OROP] = ORQ;
+    op_to_inst_point[EQOP] = op_to_inst_point[LEOP] = op_to_inst_point[LTOP] = op_to_inst_point[GEOP] = op_to_inst_point[GTOP] = op_to_inst_point[NEOP] = CMPQ;
+
+    ifc_to_jinst[EQOP] = JE;
+    ifc_to_jinst[NEOP] = JNE;
+    ifc_to_jinst[LTOP] = JL;
+    ifc_to_jinst[LEOP] = JLE;
+    ifc_to_jinst[GEOP] = JGE;
+    ifc_to_jinst[GTOP] = JG;
   }
