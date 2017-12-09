@@ -127,7 +127,7 @@ int genarith(TOKEN code)
 
       case STRINGTOK: num = nextlabel++;
                       makeblit(code->stringval, num);
-                      reg = getreg(1);
+                      reg = EDI;
                       asmlitarg(num, reg);
                       break;
 
@@ -220,6 +220,7 @@ void genc(TOKEN code)
                      switch (code->datatype) {          /* store value into lhs  */
                        case INTEGER: asmst(MOVL, reg, offs, lhs->stringval);
                                      break;
+                       case REAL: break;
                                  /* ...  */
                      };
                      break; 
@@ -262,14 +263,18 @@ int genaref(TOKEN code, int storereg) {
 int genfun(TOKEN code) {
     TOKEN tok = code->operands; //FUNCTION
     TOKEN lhs = tok->link;  //FIRST ARGUMENT
-    int reg;
     while (lhs) {
-      reg = genarith(lhs);        //CHANGE THIS, RETURN EAX, XMM0 or RAX
+      genarith(lhs);        //CHANGE THIS, RETURN EAX, XMM0 or RAX
       lhs = lhs->link;
     }
 
     asmcall(tok->stringval);  
-    return reg;
+    SYMBOL sym = searchst(tok->stringval);
+    if (sym->datatype->basicdt == REAL) {
+      return registertable[FBASE];
+    } else {
+      return registertable[RBASE];
+    } 
 }
 
 /* find the correct MOV op depending on type of code */
