@@ -107,8 +107,8 @@ int genarith(TOKEN code)
     if (DEBUGGEN) { 
       printf("genarith\n");
 	    dbugprinttok(code);
+
     };
-    //Call genaref somewhere
     switch ( code->tokentype ) { 
       case NUMBERTOK:   switch (code->datatype) { 
                             case INTEGER: num = code->intval;
@@ -141,7 +141,9 @@ int genarith(TOKEN code)
                             case REAL:    reg = getreg(2);
                                           asmld(MOVSD, offs, reg, code->stringval); 
                                           break;
-                            case POINTER: break; //TODO (MOVQ)
+                            case POINTER: reg = getreg(1);
+                                          asmld(MOVQ, offs, reg)
+                                          break; 
                           }
                           break;
 
@@ -149,35 +151,69 @@ int genarith(TOKEN code)
                           //INCLUDE CHECK TO SEE IF ARGUMENT IS A FUNCALL
 
       case OPERATOR:  if (code->whichval == AREFOP) {
-                        //reg = genaref(code);
+                        reg = genaref(code);
+                      } else if (code->whichval == FUNCALLOP){
+                        reg = genfun(code);
                       } else if (code->whichval == FLOATOP) {
                           lhs = code->operands;
                           reg1 = genarith(lhs);
                           reg = getreg(2);
                           asmfloat(reg1, reg);
                           unused(reg1);
-                      } else if (code->whichval == FLOATOP) {
+                      } else if (code->whichval == FIXOP) {
                           lhs = code->operands;
                           reg1 = genarith(lhs);
                           reg = getreg(1);
-                          asmfloat(reg1, reg);
+                          asmfix(reg1, reg);
                           unused(reg1);
                       } else if (code->datatype == INTEGER) {
                           lhs = code->operands;
                           rhs = lhs->link;
                           reg = genarith(lhs);     
-                          reg1 = genarith(rhs);     
-                          asmrr(op_to_inst_int[code->whichval], reg1, reg); break;
-                          unused(reg1);
+                          if (rhs) {
+                              if (funcallin(rhs)) {
+                                asmsttemp(reg);
+                                unused(reg);
+                                reg1 = genarith(rhs);
+                                asmldtemp(reg);
+                                asmrr(op_to_inst_int[code->whichval], reg1, reg);
+                                unused(reg1);
+                              } else {
+                                reg1 = genarith(rhs);     
+                                asmrr(op_to_inst_int[code->whichval], reg1, reg); 
+                                unused(reg1);
+                              }
+                          } else {
+                            reg1 = getreg(2);
+                            asmfneg(reg, reg1);
+                            reg = reg1;
+                            unused(reg1);
+                          }
                       } else if (code->datatype == REAL) {
-                         lhs = code->operands;
+                          lhs = code->operands;
                           rhs = lhs->link;
-                          reg = genarith(lhs);     
-                          reg1 = genarith(rhs);     
-                          asmrr(op_to_inst_real[code->whichval], reg1, reg); break;
-                          unused(reg1);
+                          reg = genarith(lhs);    
+                          if (rhs) { 
+                            if (funcallin(rhs)) {
+                              asmsttemp(reg);
+                              unused(reg);
+                              reg1 = genarith(rhs);
+                              asmldtemp(reg);
+                              asmrr(op_to_inst_real[code->whichval], reg1, reg);
+                              unused(reg1);
+                            } else {
+                              reg1 = genarith(rhs);     
+                              asmrr(op_to_inst_real[code->whichval], reg1, reg);
+                              unused(reg1);
+                            }
+                          } else {
+                            reg1 = getreg(2);
+                            asmfneg(reg, reg1);
+                            reg = reg1;
+                            unused(reg1);
+                          }
                       } else {
-                        printf("Dont know what to do");
+                        printf("Error");
                         return -1;
                       }
                       break;
@@ -220,7 +256,8 @@ void genc(TOKEN code)
                      switch (code->datatype) {          /* store value into lhs  */
                        case INTEGER: asmst(MOVL, reg, offs, lhs->stringval);
                                      break;
-                       case REAL: break;
+                       case REAL: asmst(MOVSD, reg, offs, lhs->stringval);  
+                                  break;
                                  /* ...  */
                      };
                      break; 
@@ -256,29 +293,58 @@ void genc(TOKEN code)
 /* If storereg < 0, generates a load and returns register number;
    else, generates a store from storereg. */
 int genaref(TOKEN code, int storereg) {
-  return -1;
+  TOKEN base = code->operands;
+  TOKEN offset = base->link;
+
+  int reg = genarith(offset);
+  asmop(CLTQ);
+
+
+
 }
 
 /* Generate code for a function call */
 int genfun(TOKEN code) {
     TOKEN tok = code->operands; //FUNCTION
     TOKEN lhs = tok->link;  //FIRST ARGUMENT
+    int count = 0;
     while (lhs) {
-      genarith(lhs);        //CHANGE THIS, RETURN EAX, XMM0 or RAX
+      genarith(lhs);        
       lhs = lhs->link;
+      count ++;
     }
 
     asmcall(tok->stringval);  
     SYMBOL sym = searchst(tok->stringval);
+
+    if (DEBUGGEN) {
+      printf("genfunc\n");
+      printf("no of arguments: %d", count);
+      dbugprinttok(code);
+    }
     if (sym->datatype->basicdt == REAL) {
-      return registertable[FBASE];
+      return XMM0;
+    } else if (sym->datatype->basicdt == INTEGER) {
+      return EAX;
     } else {
-      return registertable[RBASE];
-    } 
+      return RAX;
+    }
 }
 
-/* find the correct MOV op depending on type of code */
-int moveop(TOKEN code);
+/* test if there is a function call within code: 1 if true, else 0 */
+int funcallin(TOKEN code) {
+  if (DEBUGGEN) {
+    printf("funcallin\n");
+    dbugprinttok(code);
+  }
+  if (code->whichval == FUNCALLOP) {
+    return 1;
+  } else if (code->link) {
+    return funcallin(code->link);
+  } else {
+    return 0;
+  }
+}
 
   void clearreg() {
     for (int i = 0; i < REGISTERS; i ++) {
